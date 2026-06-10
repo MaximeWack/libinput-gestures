@@ -779,6 +779,7 @@ def main():
             line = re.sub("/ ", "/", line)
             device, event, other = line.strip().split(maxsplit = 2)
             event = event[6:]
+            other = re.sub(".*?\\+", "", other)
             if event == 'FRAME':
                 continue
             elif event == 'UP':
