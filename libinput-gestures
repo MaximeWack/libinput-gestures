@@ -832,9 +832,10 @@ def main():
             continue
 
         # Split received message line into relevant fields
-        dev, gevent, time, other = line.strip().split(maxsplit=3)
+        dev, gevent, other = line.strip().split(maxsplit=2)
         gesture, event = gevent[8:].split('_')
-        fingers, *argslist = other.split(maxsplit=1)
+        other = re.sub(".*?\\+", "", other)
+        time, fingers, *argslist = other.split(maxsplit=2)
         params = argslist[0] if argslist else ''
 
         # Action each type of event
