@@ -426,7 +426,7 @@ class SWIPE(GESTURE):
 
     def end(self):
         'Action this gesture at the end of a motion sequence'
-        y, x = self.data
+        x, y = self.data
         abx = abs(x)
         aby = abs(y)
 
