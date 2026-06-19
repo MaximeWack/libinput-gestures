@@ -476,6 +476,54 @@ class PINCH(GESTURE):
         elif ratio != 0.0:
             self.action('in' if ratio <= 0.0 else 'out')
 
+@add_gesture_handler
+class SWITCH:
+    'Class to handle this type of switch'
+    SUPPORTED_SWITCHES = ('tablet-mode', 'lid', 'keypad-slide')
+
+    def __init__(self):
+        'Initialise this switch at program start'
+        self.name = type(self).__name__
+        self.motions = OrderedDict()
+
+    def add(self, switch, state, command):
+        'Add a configured motion command for this gesture'
+        if switch not in self.SUPPORTED_SWITCHES:
+            return '{} does not support switch "{}".\n' \
+                    'Must be "{}"'.format(self.name.lower(), switch,
+                            '" or "'.join(self.SUPPORTED_MOTIONS))
+        if not command:
+            return 'No command configured'
+
+        key = (switch, state)
+
+        try:
+            cmds = shlex.split(command)
+        except Exception as e:
+            return str(e)
+
+        cls = internal_commands.get(cmds[0], COMMAND)
+
+        try:
+            self.motions[key] = cls(cmds)
+        except Exception as e:
+            return str(e)
+
+        return None
+
+    def action(self, switch, state):
+        'Action a motion command for this gesture'
+        command = self.motions.get((switch, state))
+
+        if args.verbose:
+            print('{}: {} {} {}'.format(PROGNAME, self.name, switch,
+                state))
+            if command:
+                print('  ', command)
+
+        if command and not args.debug:
+            command.run()
+
 # Table of configuration commands
 conf_commands = OrderedDict()
 
@@ -483,6 +531,23 @@ def add_conf_command(func):
     'Add configuration command to command lookup table based on name'
     conf_commands[re.sub('^conf_', '', func.__name__)] = func
 
+# switch <switch> <state> <command>
+@add_conf_command
+def conf_switch(lineargs):
+    'Process a single gesture line in conf file'
+    fields = lineargs.split(maxsplit=2)
+
+    # Look for configured gesture. Sanity check the line.
+    if len(fields) < 3:
+        return 'Invalid switch line - not enough fields'
+
+    switch, state, command = fields
+    handler = handlers.get("SWITCH")
+
+    # Add the configured switch
+    return handler.add(switch, state, command)
+
+# gesture <gesture> <direction> <fingers> <command>
 @add_conf_command
 def conf_gesture(lineargs):
     'Process a single gesture line in conf file'
@@ -826,6 +891,17 @@ def main():
                     startPos = []
                     ready = True
                 continue
+
+
+        if "SWITCH_TOGGLE" in line:
+            line = re.sub("/ ", "/", line)
+            device, event, time, _, switch, _, state = line.strip().split(maxsplit = 6)
+
+            handler = handlers.get("SWITCH")
+            if state == '0':
+                handler.action(switch, "off")
+            else:
+                handler.action(switch, "on")
 
         # Only interested in gestures
         if 'GESTURE_' not in line:
