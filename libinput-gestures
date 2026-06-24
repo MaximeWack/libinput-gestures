@@ -225,15 +225,8 @@ class GESTURE:
         if self.extended_text in motion:
             self.has_extended = True
 
-        key = (motion, fingers) if fingers else motion
-
         try:
-            cmds = shlex.split(command)
-        except Exception as e:
-            return str(e)
-
-        try:
-            self.motions[key] = COMMAND(cmds)
+            self.motions[(motion, fingers)] = COMMAND(shlex.split(command))
         except Exception as e:
             return str(e)
 
@@ -358,15 +351,8 @@ class SWITCH:
         if not command:
             return 'No command configured'
 
-        key = (switch, state)
-
         try:
-            cmds = shlex.split(command)
-        except Exception as e:
-            return str(e)
-
-        try:
-            self.motions[key] = COMMAND(cmds)
+            self.motions[(switch, state)] = COMMAND(shlex.split(command))
         except Exception as e:
             return str(e)
 
