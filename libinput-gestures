@@ -185,154 +185,6 @@ class COMMAND:
         'Return string representation'
         return self.reprstr
 
-# Table of internal commands
-internal_commands = OrderedDict()
-
-def add_internal_command(cls):
-    'Add configuration command to command lookup table based on name'
-    internal_commands[re.sub('^COMMAND', '', cls.__name__)] = cls
-
-class ArgumentParser(argparse.ArgumentParser):
-    'Custom ArgumentParser to return error text'
-    def error(self, msg):
-        raise(Exception(msg))
-
-@add_internal_command
-class COMMAND_internal(COMMAND):
-    'Internal command handler.'
-    # Commands currently supported follow. Each is configured with the
-    # (X,Y) translation to be applied to the desktop grid.
-    commands = (
-        ('ws_up',         ( 0,  1)),  # noqa: E241,E201
-        ('ws_down',       ( 0, -1)),  # noqa: E241,E201
-        ('ws_left',       ( 1,  0)),  # noqa: E241,E201
-        ('ws_right',      (-1,  0)),  # noqa: E241,E201
-        ('ws_left_up',    ( 1,  1)),  # noqa: E241,E201
-        ('ws_left_down',  ( 1, -1)),  # noqa: E241,E201
-        ('ws_right_up',   (-1,  1)),  # noqa: E241,E201
-        ('ws_right_down', (-1, -1)),  # noqa: E241,E201
-    )
-
-    commands_list = [c[0] for c in commands]
-
-    CMDLIST = 'wmctrl -d'.split()
-    CMDSET = 'wmctrl -s'.split()
-
-    def __init__(self, args):
-        'Action internal swipe commands'
-        super().__init__(args)
-
-        # Set up command line arguments
-        opt = ArgumentParser(prog=self.argslist[0], description=self.__doc__)
-        opt.add_argument('-w', '--wrap', action='store_true',
-                help='wrap workspaces when switching to/from start/end')
-        opt.add_argument('-c', '--cols', type=int,
-                help='number of columns in virtual desktop grid, default=1')
-        opt.add_argument('--row', type=int, default=0, help=argparse.SUPPRESS)
-        opt.add_argument('--col', type=int, default=0, help=argparse.SUPPRESS)
-        opt.add_argument('action', choices=self.commands_list,
-                help='Internal command to action')
-        args = opt.parse_args(self.argslist[1:])
-        self.nowrap = not args.wrap
-        self.rows = 0
-        self.cols = 0
-        cmdi = self.commands_list.index(args.action)
-
-        if cmdi >= 2:
-            if args.row or args.col:
-                opt.error('Legacy "--row" and "--col" not supported')
-            if args.cols is None:
-                if cmdi < 4:
-                    self.cols = 1
-                    cmdi -= 2
-                else:
-                    opt.error('"--cols" must be specified')
-            elif args.cols < 1:
-                opt.error('"--cols" must be >= 1')
-            else:
-                self.cols = args.cols
-        else:
-            # Convert old legacy/depreciated arguments to new arguments
-            if args.cols is not None:
-                if args.cols < 1:
-                    opt.error('"--cols" must be >= 1')
-                self.cols = args.cols
-            elif args.row:
-                cmdi += 2
-                self.cols = args.row
-            elif args.col:
-                self.rows = args.col
-            else:
-                self.cols = 1
-
-        # Save the translations appropriate to this command
-        self.xmove, self.ymove = self.commands[cmdi][1]
-
-    def run(self, block=False):
-        'Get list of current workspaces and select next one'
-        stdout = run(self.CMDLIST, check=False)
-        if not stdout:
-            # This command can fail on GNOME when you have only a single
-            # dynamic workspace (probably a GNOME bug) so let's just
-            # fudge that default case.
-            stdout = '0 *\n1 -'
-
-        # Parse the output of above command
-        lines = [l.split(maxsplit=2)[1] for l in stdout.strip().splitlines()]
-        start = index = lines.index('*')
-        num = len(lines)
-        cols = self.cols or num // self.rows
-        numv = ((num - 1) // cols + 1) * cols
-
-        # Calculate new workspace X direction index
-        count = self.xmove
-        if count < 0:
-            if index % cols == 0:
-                if self.nowrap:
-                    return
-                index += cols - 1
-                if index >= num:
-                    if self.ymove == 0:
-                        if self.nowrap:
-                            return
-                        index = num - 1
-            else:
-                index += count
-        elif count > 0:
-            index += count
-            if index % cols == 0:
-                if self.nowrap:
-                    return
-                index -= cols
-            elif index >= num:
-                if self.ymove == 0:
-                    if self.nowrap:
-                        return
-                    index -= numv - index
-
-        # Calculate new workspace Y direction index
-        count = self.ymove * cols
-        if count < 0:
-            if index < cols and self.nowrap:
-                return
-            index = (index + count) % numv
-            if index >= num:
-                index += count
-        elif count > 0:
-            index += count
-            if index >= numv:
-                if self.nowrap:
-                    return
-                index = index % numv
-            elif index >= num:
-                if self.nowrap:
-                    return
-                index = (index + count) % numv
-
-        # Switch to desired workspace
-        return run(self.CMDSET + [str(index)], block=block) \
-                if index != start else None
-
 # Table of gesture handlers
 handlers = {}
 
@@ -369,10 +221,8 @@ class GESTURE:
         except Exception as e:
             return str(e)
 
-        cls = internal_commands.get(cmds[0], COMMAND)
-
         try:
-            self.motions[key] = cls(cmds)
+            self.motions[key] = COMMAND(cmds)
         except Exception as e:
             return str(e)
 
@@ -501,10 +351,8 @@ class SWITCH:
         except Exception as e:
             return str(e)
 
-        cls = internal_commands.get(cmds[0], COMMAND)
-
         try:
-            self.motions[key] = cls(cmds)
+            self.motions[key] = COMMAND(cmds)
         except Exception as e:
             return str(e)
 
