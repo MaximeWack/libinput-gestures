@@ -14,7 +14,7 @@ import math
 import signal
 from time import monotonic
 from pathlib import Path
-from distutils.version import LooseVersion as Version
+from packaging.version import Version
 
 PROGPATH = Path(sys.argv[0])
 PROGNAME = PROGPATH.stem
