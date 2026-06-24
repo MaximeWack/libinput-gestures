@@ -13,7 +13,6 @@ import platform
 import math
 import signal
 from time import monotonic
-from collections import OrderedDict
 from pathlib import Path
 from distutils.version import LooseVersion as Version
 
@@ -335,7 +334,7 @@ class COMMAND_internal(COMMAND):
                 if index != start else None
 
 # Table of gesture handlers
-handlers = OrderedDict()
+handlers = {}
 
 def add_gesture_handler(cls):
     'Create gesture handler instance and add to lookup table based on name'
@@ -346,7 +345,7 @@ class GESTURE:
     def __init__(self):
         'Initialise this gesture at program start'
         self.name = type(self).__name__
-        self.motions = OrderedDict()
+        self.motions = {}
         self.has_extended = False
 
     def add(self, motion, fingers, command):
@@ -484,7 +483,7 @@ class SWITCH:
     def __init__(self):
         'Initialise this switch at program start'
         self.name = type(self).__name__
-        self.motions = OrderedDict()
+        self.motions = {}
 
     def add(self, switch, state, command):
         'Add a configured motion command for this gesture'
@@ -525,7 +524,7 @@ class SWITCH:
             command.run()
 
 # Table of configuration commands
-conf_commands = OrderedDict()
+conf_commands = {}
 
 def add_conf_command(func):
     'Add configuration command to command lookup table based on name'
