@@ -74,8 +74,7 @@ def run(cmd, *, check = True, block = True):
 
 def get_libinput_vers():
     'Return the libinput installed version number string'
-    # Try to use newer libinput interface then fall back to old
-    # (depreciated) interface.
+    # Try to use newer libinput interface then fall back to old (depreciated) interface.
     res = run(('libinput', '--version'), check = False)
 
     return res.strip() if res else run(('libinput-list-devices', '--version'), check = False)
@@ -138,8 +137,7 @@ def get_device_info(name, cmd_list_devices, device_list):
         if 'size' in d and 'pointer' in d.get('capabilities'):
             return d
 
-    # Otherwise look for 1st device with touchpad in it's name
-    # or, failing that, 1st device with trackpad in it's name
+    # Otherwise look for 1st device with touchpad in it's name or, failing that, 1st device with trackpad in it's name
     for txt in ('touch ?pad', 'track ?pad'):
         for d in devices:
             if re.search(txt, d.get('device', ''), re.I):
@@ -159,8 +157,7 @@ def get_device(name, cmd_list_devices, device_list):
         if devname:
             devpath = Path(devname)
 
-            # Also determine and prefer a non-volatile path merely
-            # because it is more identifying for users.
+            # Also determine and prefer a non-volatile path merely because it is more identifying for users.
             for dirstr in ('/dev/input/by-path', '/dev/input/by-id'):
                 dirpath = Path(dirstr)
 
@@ -220,8 +217,7 @@ class GESTURE:
         if not command:
             return 'No command configured'
 
-        # If any extended gestures configured then set flag to enable
-        # their discrimination
+        # If any extended gestures configured then set flag to enable their discrimination
         if self.extended_text in motion:
             self.has_extended = True
 
@@ -289,8 +285,7 @@ class SWIPE(GESTURE):
             return
 
         # Discriminate left/right or up/down.
-        # If significant movement in both planes the consider it a
-        # oblique swipe (but only if any are configured)
+        # If significant movement in both planes the consider it a oblique swipe (but only if any are configured)
         if abx > aby:
             motion = 'left' if x < 0 else 'right'
 
@@ -412,8 +407,7 @@ def conf_gesture(lineargs):
         return 'Gesture "{}" is not supported.\nMust be "{}"'.\
             format(gesture, '" or "'.join([h.lower() for h in handlers]))
 
-    # Gesture command can be configured with optional specific finger
-    # count so look for that
+    # Gesture command can be configured with optional specific finger count so look for that
     fingers, *fcommand = command.split(maxsplit = 1)
 
     if fingers.isdigit() and len(fingers) == 1:
@@ -498,8 +492,8 @@ def unexpanduser(cfile):
 
     return ('~/' + str(relhome)) if relhome else str(relslash)
 
-# Search for configuration file. Use file given as command line
-# argument, else look for file in search dir order.
+# Search for configuration file. Use file given as command line argument,
+# else look for file in search dir order.
 def read_conf(conffile, defname):
     if conffile:
         confpath = Path(conffile)
@@ -603,8 +597,7 @@ def main():
                      help = 'just list out environment and configuration')
     opt.add_argument('--device',
                      help = 'explicit device name to use (or path if starts with /)')
-    # Test/diag hidden option to specify a file containing libinput list
-    # device output to parse
+    # Test/diag hidden option to specify a file containing libinput list device output to parse
     opt.add_argument('--device-list',
                      help = argparse.SUPPRESS)
     args = opt.parse_args()
@@ -687,8 +680,8 @@ def main():
     # Set up square of swipe threshold
     abzsquare = swipe_min_threshold**2
 
-    # Note your must "sudo gpasswd -a $USER input" then log out/in for
-    # permission to access the device.
+    # Note you must "sudo gpasswd -a $USER input"
+    # then log out/in for permission to access the device.
     devstr = ' --device {}'.format(device.get('_path')) if device else ''
     command = 'stdbuf -oL -- {}{}'.format(cmd_debug_events, devstr)
 
@@ -700,7 +693,7 @@ def main():
     # Avoid producing zombie processes
     signal.signal(signal.SIGCHLD, signal.SIG_IGN)
 
-    # Sit in a loop forever reading the libinput messages ..
+    # Sit in a loop forever reading the libinput messages.
     handler = None
     nfingers = 0
     lastPos = []
