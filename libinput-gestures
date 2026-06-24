@@ -208,7 +208,7 @@ class GESTURE:
     def __init__(self):
         'Initialise this gesture at program start'
         self.name = type(self).__name__
-        self.motions = {}
+        self.actions = {}
         self.has_extended = False
 
     def add(self, motion, fingers, command):
@@ -226,7 +226,7 @@ class GESTURE:
             self.has_extended = True
 
         try:
-            self.motions[(motion, fingers)] = COMMAND(shlex.split(command))
+            self.actions[(motion, fingers)] = COMMAND(shlex.split(command))
         except Exception as e:
             return str(e)
 
@@ -241,7 +241,7 @@ class GESTURE:
     def action(self, motion):
         'Action a motion command for this gesture'
         # try full motion spec with finger count and fallback on no finger count specified
-        command = self.motions.get((motion, self.fingers)) or self.motions.get(motion, None)
+        command = self.actions.get((motion, self.fingers)) or self.actions.get(motion, None)
 
         if args.verbose:
             print('{}: {} {} {} {}'.\
@@ -340,7 +340,7 @@ class SWITCH:
     def __init__(self):
         'Initialise this switch at program start'
         self.name = type(self).__name__
-        self.motions = {}
+        self.actions = {}
 
     def add(self, switch, state, command):
         'Add a configured motion command for this gesture'
@@ -352,7 +352,7 @@ class SWITCH:
             return 'No command configured'
 
         try:
-            self.motions[(switch, state)] = COMMAND(shlex.split(command))
+            self.actions[(switch, state)] = COMMAND(shlex.split(command))
         except Exception as e:
             return str(e)
 
@@ -360,7 +360,7 @@ class SWITCH:
 
     def action(self, switch, state):
         'Action a motion command for this gesture'
-        command = self.motions.get((switch, state))
+        command = self.actions.get((switch, state))
 
         if args.verbose:
             print('{}: {} {} {}'.\
@@ -644,10 +644,10 @@ def main():
         if not args.raw:
             print('Gestures configured in {}:'.format(confname))
             for h in handlers.values():
-                for mpair, cmd in h.motions.items():
-                    motion, fingers = mpair
+                for mpair, cmd in h.actions.items():
+                    action, fingers = mpair
                     print('{} {:10}{:>2} {}'.\
-                          format(h.name.lower(), motion, fingers if fingers is not None else '', cmd))
+                          format(h.name.lower(), action, fingers if fingers is not None else '', cmd))
 
             if swipe_min_threshold:
                 print('swipe_threshold {}'.format(swipe_min_threshold))
