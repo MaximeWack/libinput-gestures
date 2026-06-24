@@ -645,10 +645,9 @@ def main():
             print('Gestures configured in {}:'.format(confname))
             for h in handlers.values():
                 for mpair, cmd in h.motions.items():
-                    motion, fingers = (mpair, '') \
-                            if isinstance(mpair, str) else mpair
-                    print('{} {:10}{:>2} {}'.format(h.name.lower(), motion,
-                        fingers, cmd))
+                    motion, fingers = mpair
+                    print('{} {:10}{:>2} {}'.\
+                          format(h.name.lower(), motion, fingers if fingers is not None else '', cmd))
 
             if swipe_min_threshold:
                 print('swipe_threshold {}'.format(swipe_min_threshold))
