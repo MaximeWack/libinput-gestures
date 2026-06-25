@@ -207,8 +207,9 @@ class GESTURE:
         self.name = type(self).__name__
         self.actions = {}
         self.has_extended = False
+        self.has_continuous = False
 
-    def add(self, motion, fingers, command):
+    def add(self, motion, fingers, continuous, command):
         'Add a configured motion command for this gesture'
         if motion not in self.SUPPORTED_MOTIONS:
             return 'Gesture {} does not support motion "{}".\nMust be "{}"'.\
@@ -221,8 +222,11 @@ class GESTURE:
         if self.extended_text in motion:
             self.has_extended = True
 
+        if continuous:
+            self.has_continuous = True
+
         try:
-            self.actions[(motion, fingers)] = COMMAND(shlex.split(command))
+            self.actions[(motion, fingers, continuous)] = COMMAND(shlex.split(command))
         except Exception as e:
             return str(e)
 
@@ -234,14 +238,14 @@ class GESTURE:
         self.data = [0.0, 0.0]
         self.starttime = monotonic()
 
-    def action(self, motion):
+    def action(self, motion, fingers, continuous):
         'Action a motion command for this gesture'
         # try full motion spec with finger count and fallback on no finger count specified
-        command = self.actions.get((motion, self.fingers)) or self.actions.get(motion, None)
+        command = self.actions.get((motion, fingers, continuous)) or self.actions.get((motion, None, continuous))
 
         if args.verbose:
             print('{}: {} {} {} {}'.\
-                  format(PROGNAME, self.name, motion, self.fingers, self.data))
+                  format(PROGNAME, self.name, motion, fingers, self.data))
 
             if command:
                 print('  ', command)
@@ -272,6 +276,30 @@ class SWIPE(GESTURE):
         self.data[0] += x
         self.data[1] += y
 
+        if self.has_continuous:
+            x, y = self.data
+            abx = abs(x)
+            aby = abs(y)
+
+            # Require absolute distance movement beyond a small thresh-hold.
+            if abx**2 + aby**2 < abzsquare:
+                return
+
+            # Discriminate left/right or up/down.
+            # If significant movement in both planes the consider it a oblique swipe (but only if any are configured)
+            if abx > aby:
+                motion = 'left' if x < 0 else 'right'
+
+                if self.has_extended and abx > 0 and aby / abx > OBLIQUE_RATIO:
+                    motion += '_up' if y < 0 else '_down'
+            else:
+                motion = 'up' if y < 0 else 'down'
+
+                if self.has_extended and aby > 0 and abx / aby > OBLIQUE_RATIO:
+                    motion = ('left_' if x < 0 else 'right_') + motion
+
+            self.action(motion, self.fingers, True)
+
         return True
 
     def end(self):
@@ -297,7 +325,7 @@ class SWIPE(GESTURE):
             if self.has_extended and aby > 0 and abx / aby > OBLIQUE_RATIO:
                 motion = ('left_' if x < 0 else 'right_') + motion
 
-        self.action(motion)
+        self.action(motion, self.fingers, False)
 
 @add_gesture_handler
 class PINCH(GESTURE):
@@ -323,9 +351,9 @@ class PINCH(GESTURE):
         ratio, angle = self.data
 
         if self.has_extended and abs(angle) > ROTATE_ANGLE:
-            self.action('clockwise' if angle >= 0.0 else 'anticlockwise')
+            self.action('clockwise' if angle >= 0.0 else 'anticlockwise', self.fingers, False)
         elif ratio != 0.0:
-            self.action('in' if ratio <= 0.0 else 'out')
+            self.action('in' if ratio <= 0.0 else 'out', self.fingers, False)
 
 @add_gesture_handler
 class SWITCH:
@@ -648,9 +676,14 @@ def main():
             print('Gestures configured in {}:'.format(confname))
             for h in handlers.values():
                 for mpair, cmd in h.actions.items():
-                    action, fingers = mpair
-                    print('{} {:10}{:>2} {}'.\
-                          format(h.name.lower(), action, fingers if fingers is not None else '', cmd))
+                    action, fingers, *continuous = mpair
+                    continuous = '(continuous)' if len(continuous) > 0 and continuous[0] else ''
+                    print('{} {:10}{:>2} {} {}'.\
+                          format(h.name.lower(),
+                                 action,
+                                 fingers if fingers is not None else '',
+                                 cmd,
+                                 continuous))
 
             if swipe_min_threshold:
                 print('swipe_threshold {}'.format(swipe_min_threshold))
