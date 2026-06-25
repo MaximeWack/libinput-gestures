@@ -401,19 +401,18 @@ def add_conf_command(func):
     'Add configuration command to command lookup table based on name'
     conf_commands[re.sub('^conf_', '', func.__name__)] = func
 
-# switch <switch> <state> <command>
-@add_conf_command
-def conf_switch(lineargs):
-    'Process a single gesture line in conf file'
-    fields = re.match(r"""
+conf_switch_re = re.compile(r"""
     (?P<switch>tablet-mode|lid|keypad-slide) # Switch name
     \s+
     (?P<state>on|off)                        # Toggle state
     \s+
     (?P<command>.*)                          # Command
-    """,
-    lineargs,
-    flags = re.VERBOSE)
+""", flags = re.VERBOSE)
+
+@add_conf_command
+def conf_switch(lineargs):
+    'Process a single gesture line in conf file'
+    fields = conf_switch_re.match(lineargs)
 
     # Look for configured gesture. Sanity check the line.
     if not fields:
@@ -425,21 +424,20 @@ def conf_switch(lineargs):
     # Add the configured switch
     return handler.add(switch, state, command)
 
-# gesture <gesture> <direction> <fingers> <command>
-@add_conf_command
-def conf_gesture(lineargs):
-    'Process a single gesture line in conf file'
-    fields = re.match(r"""
-    (?P<gesture>swipe|pinch) # gesture name
+conf_gesture_re = re.compile(r"""
+    (?P<gesture>swipe|pinch)                 # gesture name
     \s+
     (?P<motion>((left|right)_)?up|((left|right)_)?down|left|right|in|out|(anti)?clockwise)   # gesture motion
     \s+
-    ((?P<fingers>\d)(?:\s+))?                          # fingers
-    ((?P<continuous>continuous)(?:\s+))?               # continuous
-    (?P<command>.*)                                  # command
-    """,
-    lineargs,
-    flags = re.VERBOSE)
+    ((?P<fingers>\d) (?:\s+))?               # fingers
+    ((?P<continuous>continuous) (?:\s+))?    # continuous
+    (?P<command>.*)                          # command
+""", flags = re.VERBOSE)
+
+@add_conf_command
+def conf_gesture(lineargs):
+    'Process a single gesture line in conf file'
+    fields = conf_gesture_re.match(lineargs)
 
     # Look for configured gesture. Sanity check the line.
     if not fields:
@@ -732,6 +730,44 @@ def main():
     # Avoid producing zombie processes
     signal.signal(signal.SIGCHLD, signal.SIG_IGN)
 
+touch_event_re = re.compile(r"""
+    .*?event\d+ \s+ TOUCH_          # Prefix
+    (?P<event>UP|DOWN|FRAME|MOTION) # Event
+    \s+
+    (?:\d+\s+)?                     # Event number within frame
+    \+ (?P<time>\d+\.\d+) s         # Time
+    ((?:\s+) (?P<params>.*))?       # Params
+""", flags = re.VERBOSE)
+
+touch_params_re = re.compile(r"""
+    (?P<finger>\d) \s+ \( (?P=finger) \)   # Finger
+    \s+
+    (?P<x>\d+\.\d+) /\s* (?P<y>\d+\.\d+)   # Absolute position 0-100% of width/height
+""", flags = re.VERBOSE)
+
+switch_event_re = re.compile(r"""
+    .*?event\d+ \s+ SWITCH_TOGGLE # Prefix
+    \s+
+    \+ (?P<time>\d+\.\d+) s    # Time
+    \s+
+    switch \s+ (?P<switch>tablet-mode|lid|keypad-slide) # Switch name
+    \s+
+    state \s+ (?P<state>0|1)  # State
+""", flags = re.VERBOSE)
+
+gesture_event_re = re.compile(r"""
+    .*?event\d+ \s+ GESTURE_      # Prefix
+    (?P<gesture>SWIPE|PINCH|HOLD) # Gesture
+    _
+    (?P<event>BEGIN|UPDATE|END)   # Event
+    \s+
+    (?:\d+\s+)?                   # Update frame number
+    \+ (?P<time>\d+\.\d+) s       # Time
+    \s+
+    (?P<fingers>\d)               # Fingers
+    ((?:\s+) (?P<params>.*))?     # Params
+""", flags = re.VERBOSE)
+
     # Sit in a loop forever reading the libinput messages.
     handler = None
     nfingers = 0
@@ -740,56 +776,67 @@ def main():
     ready = True
 
     for line in cmd.stdout:
+        line = line.strip()
+
         # Just output raw messages if in that mode
         if args.raw:
-            print(line.strip())
+            print(line)
             continue
 
-        # Touchscreen libinput parsing
         if 'TOUCH_' in line:
-            device, event, other = line.strip().split(maxsplit = 2)
-            event = event[6:]
-            other = re.sub(".*?\\+", "", other)
+            fields = touch_event_re.match(line)
 
+            if not fields:
+                print('Unknown touch gesture received: {}.'.format(line, file = sys.stderr))
+                return
+
+            event, time, params = fields.groupdict().values()
+
+            # skip FRAME event and return
             if event == 'FRAME':
                 continue
 
+            # skip UP event
             elif event == 'UP':
-                time, finger, fingerp, pos, realpos = other, None, None, None, None
-                xpos, ypos = None, None
+                finger, fingerp, pos, realpos, x, y = None, None, None, None, None, None
 
+            # parse params for DOWN and MOTION
             else:
-                time, finger, fingerp, pos, realpos = other.split(maxsplit = 4)
-                xpos, ypos = pos.split('/')
+                fields = touch_params_re.match(params)
+
+                if not fields:
+                    print('Unknown touch gesture parameters received: {}.'.format(params, file = sys.stderr))
+                    return
+
+                finger, x, y = fields.groupdict().values()
+
                 finger = int(finger)
-                xpos = float(xpos)
-                ypos = float(ypos)
+                x = float(x)
+                y = float(y)
 
             if ready:
-                # Track each new finger
-                # Store the current fingers positions
+                # Track each new finger and store its starting position
                 if event == 'DOWN':
-                    lastPos.append((xpos, ypos))
+                    lastPos.append((x, y))
                     startPos = lastPos.copy()
                     nfingers += 1
 
                 # Follow last known position for each finger
                 if nfingers > 0 and event == 'MOTION':
-                    lastPos[finger] = (xpos, ypos)
+                    lastPos[finger] = (x, y)
 
                 # Trigger gesture at the first lifted finger
                 if nfingers > 0 and event == 'UP':
-                    touch = touchGesture(startPos, lastPos)
-                    handler = handlers.get(touch["gesture"])
+                    gesture, params = touch_gesture(startPos, lastPos).values()
+                    handler = handlers.get(gesture)
 
                     if handler:
                         handler.begin("{}".format(nfingers))
-                        handler.update(touch["params"])
-                        handler.end()
+                        handler.update(params)
+                        handler.end(False)
                         handler = None
                     else:
-                        print('unknown gesture received: {}.'.format(gesture),
-                              file = sys.stderr)
+                        print('unknown gesture received: {}.'.format(gesture), file = sys.stderr)
 
                     ready = False
                     nfingers -= 1
@@ -804,51 +851,47 @@ def main():
                 continue
 
         if "SWITCH_" in line:
-            device, event, time, _, switch, _, state = line.strip().split(maxsplit = 6)
+            fields = switch_event_re.match(line)
+
+            if not fields:
+                print('Unknown switch toggle received: {}.'.format(line, file = sys.stderr))
+                return
+
             handler = handlers.get("SWITCH")
 
-            if state == '0':
-                handler.action(switch, "off")
-            else:
-                handler.action(switch, "on")
+            time, switch, state = fields.groupdict().values()
 
-        # Only interested in gestures
+            handler.action(switch, "on" if state == '1' else "off")
+            handler = None
+
         if 'GESTURE_' in line:
             # Split received message line into relevant fields
-            dev, gevent, other = line.strip().split(maxsplit = 2)
-            gesture, event = gevent[8:].split('_')
-            other = re.sub(".*?\\+", "", other)
-            time, fingers, *argslist = other.split(maxsplit = 2)
-            params = argslist[0] if argslist else ''
+            fields = gesture_event_re.match(line)
+
+            if not fields:
+                print('Unknown gesture + event received: {}.'.format(line, file = sys.stderr))
+                return
+
+            gesture, event, time, fingers, params = fields.groupdict().values()
 
             # Action each type of event
-            if event == 'UPDATE':
-                if handler:
-                    # Split parameters into list of clean numbers
-                    if not handler.update(re.split(r'[^-.\d]+', params)):
-                        print('Could not parse {} {}: {}'.\
-                              format(gesture, event, params),
-                              file = sys.stderr)
-
-            elif event == 'BEGIN':
+            if event == 'BEGIN':
                 handler = handlers.get(gesture)
 
                 if handler:
                     handler.begin(fingers)
                 else:
-                    print('Unknown gesture received: {}.'.format(gesture),
-                          file = sys.stderr)
+                    print('Unknown gesture received: {}.'.format(gesture), file = sys.stderr)
+
+            elif event == 'UPDATE':
+                if handler:
+                    if not handler.update(re.split(r'[^-.\d]+', params)):
+                        print('Could not parse {} {}: {}'. format(gesture, event, params), file = sys.stderr)
 
             elif event == 'END':
-                # Ignore gesture if final action is cancelled
                 if handler:
-                    if params != 'cancelled':
-                        handler.end()
-
+                    handler.end(params == "cancelled")
                     handler = None
-            else:
-                print('Unknown gesture + event received: {} + {}.'.format(gesture, event),
-                      file = sys.stderr)
 
 if __name__ == '__main__':
     main()
