@@ -378,13 +378,21 @@ def add_conf_command(func):
 @add_conf_command
 def conf_switch(lineargs):
     'Process a single gesture line in conf file'
-    fields = lineargs.split(maxsplit = 2)
+    fields = re.match(r"""
+    (?P<switch>tablet-mode|lid|keypad-slide) # Switch name
+    \s+
+    (?P<state>on|off)                        # Toggle state
+    \s+
+    (?P<command>.*)                          # Command
+    """,
+    lineargs,
+    flags = re.VERBOSE)
 
     # Look for configured gesture. Sanity check the line.
-    if len(fields) < 3:
+    if not fields:
         return 'Invalid switch line - not enough fields'
 
-    switch, state, command = fields
+    switch, state, command = fields.groupdict().values()
     handler = handlers.get("SWITCH")
 
     # Add the configured switch
@@ -394,29 +402,31 @@ def conf_switch(lineargs):
 @add_conf_command
 def conf_gesture(lineargs):
     'Process a single gesture line in conf file'
-    fields = lineargs.split(maxsplit = 2)
+    fields = re.match(r"""
+    (?P<gesture>swipe|pinch) # gesture name
+    \s+
+    (?P<motion>((left|right)_)?up|((left|right)_)?down|left|right|in|out|(anti)?clockwise)   # gesture motion
+    \s+
+    ((?P<fingers>\d)(?:\s+))?                          # fingers
+    ((?P<continuous>continuous)(?:\s+))?               # continuous
+    (?P<command>.*)                                  # command
+    """,
+    lineargs,
+    flags = re.VERBOSE)
 
     # Look for configured gesture. Sanity check the line.
-    if len(fields) < 3:
+    if not fields:
         return 'Invalid gesture line - not enough fields'
 
-    gesture, motion, command = fields
+    gesture, motion, fingers, continuous, command = fields.groupdict().values()
     handler = handlers.get(gesture.upper())
 
     if not handler:
         return 'Gesture "{}" is not supported.\nMust be "{}"'.\
             format(gesture, '" or "'.join([h.lower() for h in handlers]))
 
-    # Gesture command can be configured with optional specific finger count so look for that
-    fingers, *fcommand = command.split(maxsplit = 1)
-
-    if fingers.isdigit() and len(fingers) == 1:
-        command = fcommand[0] if fcommand else ''
-    else:
-        fingers = None
-
     # Add the configured gesture
-    return handler.add(motion.lower(), fingers, command)
+    return handler.add(motion.lower(), fingers, True if continuous else False, command)
 
 @add_conf_command
 def conf_device(lineargs):
