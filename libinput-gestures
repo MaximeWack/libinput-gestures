@@ -718,7 +718,6 @@ def main():
 
         # Touchscreen libinput parsing
         if 'TOUCH_' in line:
-            line = re.sub("/ ", "/", line)
             device, event, other = line.strip().split(maxsplit = 2)
             event = event[6:]
             other = re.sub(".*?\\+", "", other)
@@ -776,7 +775,6 @@ def main():
                 continue
 
         if "SWITCH_TOGGLE" in line:
-            line = re.sub("/ ", "/", line)
             device, event, time, _, switch, _, state = line.strip().split(maxsplit = 6)
             handler = handlers.get("SWITCH")
 
