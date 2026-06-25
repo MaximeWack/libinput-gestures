@@ -301,8 +301,12 @@ class SWIPE(GESTURE):
 
         return True
 
-    def end(self):
+    def end(self, cancelled):
         'Action this gesture at the end of a motion sequence'
+
+        if cancelled:
+            return
+
         x, y = self.data
         abx = abs(x)
         aby = abs(y)
@@ -345,8 +349,12 @@ class PINCH(GESTURE):
         self.data[1] += y
         return True
 
-    def end(self):
+    def end(self, cancelled):
         'Action this gesture at the end of a motion sequence'
+
+        if cancelled:
+            return
+
         ratio, angle = self.data
 
         if self.has_extended and abs(angle) > ROTATE_ANGLE:
