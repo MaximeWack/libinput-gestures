@@ -465,7 +465,7 @@ def conf_device(lineargs):
     return None if args.device else 'No device specified'
 
 @add_conf_command
-def swipe_threshold(lineargs):
+def conf_swipe_threshold(lineargs):
     'Change swipe threshold'
     global swipe_min_threshold
 
@@ -477,7 +477,7 @@ def swipe_threshold(lineargs):
     return None if swipe_min_threshold >= 0 else 'Must be >= 0'
 
 @add_conf_command
-def timeout(lineargs):
+def conf_timeout(lineargs):
     'Change gesture timeout'
     global timeoutv
 
@@ -567,7 +567,7 @@ def center(points):
 def diff(point1, point2):
     return((point2[0] - point1[0], point2[1] - point1[1]))
 
-def meanDist(points, center):
+def mean_dist(points, center):
     dist = 0
 
     for point in points:
@@ -576,10 +576,10 @@ def meanDist(points, center):
 
     return dist / len(points)
 
-def normCrossProd(x1, y1, x2, y2):
+def norm_cross_prod(x1, y1, x2, y2):
     return (x1*y2 - x2*y1) / (0.0000001 + math.sqrt(x1**2 + y1**2) * math.sqrt(x2**2 + y2**2))
 
-def calcAngle(startPos, lastPos, startCenter, lastCenter):
+def calc_angle(startPos, lastPos, startCenter, lastCenter):
     angle = 0
     xc1, yc1 = startCenter
     xc2, yc2 = lastCenter
@@ -587,19 +587,19 @@ def calcAngle(startPos, lastPos, startCenter, lastCenter):
     for i in range(0, len(startPos)):
         x1, y1 = startPos[i]
         x2, y2 = lastPos[i]
-        angle += math.asin(normCrossProd(x1 - xc1, y1 - yc1, x2 - xc2, y2 - yc2))
+        angle += math.asin(norm_cross_prod(x1 - xc1, y1 - yc1, x2 - xc2, y2 - yc2))
 
     return angle / len(startPos)
 
-def touchGesture(startPos, lastPos):
+def touch_gesture(startPos, lastPos):
     startCenter = center(startPos)
     lastCenter = center(lastPos)
 
     xrel, yrel = diff(startCenter, lastCenter)
     dist = xrel**2 + yrel**2
 
-    ratio = meanDist(lastPos, lastCenter) - meanDist(startPos, startCenter)
-    angle = calcAngle(startPos, lastPos, startCenter, lastCenter)
+    ratio = mean_dist(lastPos, lastCenter) - mean_dist(startPos, startCenter)
+    angle = calc_angle(startPos, lastPos, startCenter, lastCenter)
 
     if dist > abs(ratio) and angle < ROTATE_ANGLE:
         return({'gesture': 'SWIPE',
