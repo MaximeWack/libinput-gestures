@@ -34,7 +34,6 @@ OBLIQUE_RATIO = math.tan(math.radians(22.5))
 swipe_min_threshold = 0
 
 args = None
-abzsquare = None
 
 # Timeout on gesture action from start to end. 0 = no timeout. In secs.
 # Can be changed using configuration command.
@@ -281,9 +280,9 @@ class SWIPE(GESTURE):
             abx = abs(x)
             aby = abs(y)
 
-            # Require absolute distance movement beyond a small thresh-hold.
-            if abx**2 + aby**2 < abzsquare:
-                return
+            # Require absolute distance movement beyond a small threshhold.
+            if abx**2 + aby**2 < swipe_min_threshold:
+                return True
 
             # Discriminate left/right or up/down.
             # If significant movement in both planes the consider it a oblique swipe (but only if any are configured)
@@ -309,7 +308,7 @@ class SWIPE(GESTURE):
         aby = abs(y)
 
         # Require absolute distance movement beyond a small thresh-hold.
-        if abx**2 + aby**2 < abzsquare:
+        if abx**2 + aby**2 < swipe_min_threshold:
             return
 
         # Discriminate left/right or up/down.
@@ -471,7 +470,7 @@ def swipe_threshold(lineargs):
     global swipe_min_threshold
 
     try:
-        swipe_min_threshold = int(lineargs)
+        swipe_min_threshold = int(lineargs)**2
     except Exception:
         return 'Must be integer value'
 
@@ -610,9 +609,9 @@ def touchGesture(startPos, lastPos):
                 'params': [0, 0, 0, 0, ratio, angle / math.pi * 180]})
 
 def main():
-    global args, abzsquare
 
     # Set up command line arguments
+    global args
     opt = argparse.ArgumentParser(description = __doc__)
     opt.add_argument('-c',
                      '--conffile',
@@ -686,7 +685,7 @@ def main():
                                  continuous))
 
             if swipe_min_threshold:
-                print('swipe_threshold {}'.format(swipe_min_threshold))
+                print('swipe_threshold {}'.format(math.sqrt(swipe_min_threshold)))
             if timeoutv != DEFAULT_TIMEOUT:
                 print('timeout {}'.format(timeoutv))
 
@@ -719,9 +718,6 @@ def main():
     if not proglock:
         sys.exit('{} is already running for {}, terminating ..'.\
                  format(PROGNAME, user))
-
-    # Set up square of swipe threshold
-    abzsquare = swipe_min_threshold**2
 
     # Note you must "sudo gpasswd -a $USER input"
     # then log out/in for permission to access the device.
