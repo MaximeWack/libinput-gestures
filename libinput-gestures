@@ -882,6 +882,7 @@ def main():
                     lastPos = []
                     startPos = []
                     ready = True
+                    handler = None
                 continue
 
         if "SWITCH_" in line:
