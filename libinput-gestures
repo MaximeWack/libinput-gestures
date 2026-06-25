@@ -774,7 +774,7 @@ def main():
                     ready = True
                 continue
 
-        if "SWITCH_TOGGLE" in line:
+        if "SWITCH_" in line:
             device, event, time, _, switch, _, state = line.strip().split(maxsplit = 6)
             handler = handlers.get("SWITCH")
 
