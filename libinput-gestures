@@ -527,32 +527,6 @@ def unexpanduser(cfile):
 
     return ('~/' + str(relhome)) if relhome else str(relslash)
 
-# Search for configuration file. Use file given as command line argument,
-# else look for file in search dir order.
-def read_conf(conffile, defname):
-    if conffile:
-        confpath = Path(conffile)
-
-        if not confpath.exists():
-            sys.exit('Conf file "{}" does not exist.'.format(conffile))
-    else:
-        for confdir in CONFDIRS:
-            confpath = Path(confdir, defname)
-
-            if confpath.exists():
-                break
-            else:
-                sys.exit('No file {} in {}.'.\
-                         format(defname, ' or '.join([unexpanduser(Path(c)) for c in CONFDIRS])))
-
-    # Hide any personal user dir/names from diag output
-    confname = unexpanduser(confpath)
-
-    # Read and process the conf file
-    get_conf(confpath, confname)
-
-    return confname
-
 def center(points):
     center = [0, 0]
 
@@ -606,9 +580,7 @@ def touch_gesture(startPos, lastPos):
         return({'gesture': 'PINCH',
                 'params': [0, 0, 0, 0, ratio, angle / math.pi * 180]})
 
-def main():
-
-    # Set up command line arguments
+def get_options():
     global args
     opt = argparse.ArgumentParser(description = __doc__)
     opt.add_argument('-c',
@@ -640,8 +612,10 @@ def main():
     if args.debug or args.raw or args.list:
         args.verbose = True
 
+def get_version():
     # Libinput changed the way in which it's utilities are called
     libvers = get_libinput_vers()
+
     if not libvers:
         sys.exit('libinput helper tools do not seem to be installed?')
 
@@ -664,8 +638,31 @@ def main():
         vers = str(vers.split()[0]) if vers else '?'
         print('{}: hash {}'.format(PROGPATH, vers))
 
+    return (cmd_debug_events, cmd_list_devices)
+
+# Search for configuration file. Use file given as command line argument,
+# else look for file in search dir order.
+def read_conf(conffile, defname):
+    if conffile:
+        confpath = Path(conffile)
+
+        if not confpath.exists():
+            sys.exit('Conf file "{}" does not exist.'.format(conffile))
+    else:
+        for confdir in CONFDIRS:
+            confpath = Path(confdir, defname)
+
+            if confpath.exists():
+                break
+            else:
+                sys.exit('No file {} in {}.'.\
+                         format(defname, ' or '.join([unexpanduser(Path(c)) for c in CONFDIRS])))
+
+    # Hide any personal user dir/names from diag output
+    confname = unexpanduser(confpath)
+
     # Read and process the conf file
-    confname = read_conf(args.conffile, CONFNAME)
+    get_conf(confpath, confname)
 
     # List out available gestures if that is asked for
     if args.verbose:
@@ -690,7 +687,7 @@ def main():
         if args.device:
             print('device {}'.format(args.device))
 
-    # Get touchpad device
+def get_touchpad(cmd_list_devices):
     if not args.device or args.device.lower() != "all":
         device = get_device(args.device, cmd_list_devices, args.device_list)
 
@@ -710,6 +707,9 @@ def main():
     if args.list:
         sys.exit()
 
+    return device
+
+def listen_libinput(cmd_debug_events, device):
     # Make sure only one instance running for current user
     user = getpass.getuser()
     proglock = open_lock(PROGNAME, user)
@@ -717,8 +717,8 @@ def main():
         sys.exit('{} is already running for {}, terminating ..'.\
                  format(PROGNAME, user))
 
-    # Note you must "sudo gpasswd -a $USER input"
-    # then log out/in for permission to access the device.
+    # User needs to belong to the input group to access the device
+    # "sudo gpasswd -a $USER input" then log out/in
     devstr = ' --device {}'.format(device.get('_path')) if device else ''
     command = 'stdbuf -oL -- {}{}'.format(cmd_debug_events, devstr)
 
@@ -729,6 +729,8 @@ def main():
 
     # Avoid producing zombie processes
     signal.signal(signal.SIGCHLD, signal.SIG_IGN)
+
+    return cmd
 
 touch_event_re = re.compile(r"""
     .*?event\d+ \s+ TOUCH_          # Prefix
@@ -767,6 +769,22 @@ gesture_event_re = re.compile(r"""
     (?P<fingers>\d)               # Fingers
     ((?:\s+) (?P<params>.*))?     # Params
 """, flags = re.VERBOSE)
+
+def main():
+    # Set up command line arguments
+    get_options()
+
+    # Check libinput version and get corresponding commands
+    cmd_debug_events, cmd_list_devices = get_version()
+
+    # Read and process the conf file
+    read_conf(args.conffile, CONFNAME)
+
+    # Get touchpad device
+    device = get_touchpad(cmd_list_devices)
+
+    # Listen to libinput debug-events
+    cmd = listen_libinput(cmd_debug_events, device)
 
     # Sit in a loop forever reading the libinput messages.
     handler = None
