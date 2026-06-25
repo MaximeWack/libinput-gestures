@@ -276,7 +276,7 @@ class SWIPE(GESTURE):
         self.data[1] += y
 
         if self.has_continuous:
-            x, y = self.data
+            cum_x, cum_y = self.data
             abx = abs(x)
             aby = abs(y)
 
@@ -340,13 +340,22 @@ class PINCH(GESTURE):
         'Update this gesture for a motion'
         # Ignore this update if we can not parse the numbers we expect
         try:
-            x = float(coords[4])
-            y = float(coords[5])
+            ratio = float(coords[4]) - 1
+            angle = float(coords[5])
         except (ValueError, IndexError):
             return False
 
-        self.data[0] += x - 1.0
-        self.data[1] += y
+        self.data[0] += ratio
+        self.data[1] += angle
+
+        if self.has_continuous:
+            cum_ratio, cum_angle = self.data
+
+            if self.has_extended and abs(angle) > ROTATE_ANGLE:
+                self.action('clockwise' if angle >= 0.0 else 'anticlockwise', self.fingers, False)
+            elif ratio != 0.0:
+                self.action('in' if ratio <= 0.0 else 'out', self.fingers, False)
+
         return True
 
     def end(self, cancelled):
