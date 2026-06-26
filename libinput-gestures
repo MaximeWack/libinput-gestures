@@ -236,17 +236,23 @@ class GESTURE:
         self.data = [0.0, 0.0]
         self.starttime = monotonic()
 
-    def action(self, motion, fingers, continuous):
+    def action(self, motion, fingers, continuous = None):
         'Action a motion command for this gesture'
         # try full motion spec with finger count and fallback on no finger count specified
-        command = self.actions.get((motion, fingers, continuous)) or self.actions.get((motion, None, continuous))
+        command = self.actions.get((motion, fingers, continuous and "continuous")) or self.actions.get((motion, None, continuous and "continuous"))
+
+        torun = command
+
+        if torun and continuous:
+            torun = torun.replace("{rel}", str(int(continuous[0])))
+            torun = torun.replace("{total}", str(int(continuous[1])))
 
         if args.verbose:
             print('{}: {} {} {} {}'.\
                   format(PROGNAME, self.name, motion, fingers, self.data))
 
-            if command:
-                print('  ', command)
+            if torun:
+                print('  ', torun)
 
         if timeoutv > 0 and (self.starttime + timeoutv) < monotonic():
             if args.verbose:
@@ -279,8 +285,11 @@ class SWIPE(GESTURE):
             abx = abs(x)
             aby = abs(y)
 
+            dist = math.sqrt(x ** 2 + y ** 2)
+            cum_dist = math.sqrt(cum_x ** 2 + cum_y ** 2)
+
             # Require absolute distance movement beyond a small threshhold.
-            if abx**2 + aby**2 < swipe_min_threshold:
+            if dist < swipe_min_threshold:
                 return True
 
             # Discriminate left/right or up/down.
@@ -296,7 +305,7 @@ class SWIPE(GESTURE):
                 if self.has_extended and aby > 0 and abx / aby > OBLIQUE_RATIO:
                     motion = ('left_' if x < 0 else 'right_') + motion
 
-            self.action(motion, self.fingers, True)
+            self.action(motion, self.fingers, (dist, cum_dist))
 
         return True
 
@@ -327,7 +336,7 @@ class SWIPE(GESTURE):
             if self.has_extended and aby > 0 and abx / aby > OBLIQUE_RATIO:
                 motion = ('left_' if x < 0 else 'right_') + motion
 
-        self.action(motion, self.fingers, False)
+        self.action(motion, self.fingers)
 
 @add_gesture_handler
 class PINCH(GESTURE):
@@ -351,9 +360,9 @@ class PINCH(GESTURE):
             cum_ratio, cum_angle = self.data
 
             if self.has_extended and abs(angle) > ROTATE_ANGLE:
-                self.action('clockwise' if angle >= 0.0 else 'anticlockwise', self.fingers, False)
+                self.action('clockwise' if angle >= 0.0 else 'anticlockwise', self.fingers, (angle, cum_angle))
             elif ratio != 0.0:
-                self.action('in' if ratio <= 0.0 else 'out', self.fingers, False)
+                self.action('in' if ratio <= 0.0 else 'out', self.fingers, (ratio, cum_ratio))
 
         return True
 
@@ -366,9 +375,9 @@ class PINCH(GESTURE):
         ratio, angle = self.data
 
         if self.has_extended and abs(angle) > ROTATE_ANGLE:
-            self.action('clockwise' if angle >= 0.0 else 'anticlockwise', self.fingers, False)
+            self.action('clockwise' if angle >= 0.0 else 'anticlockwise', self.fingers)
         elif ratio != 0.0:
-            self.action('in' if ratio <= 0.0 else 'out', self.fingers, False)
+            self.action('in' if ratio <= 0.0 else 'out', self.fingers)
 
 @add_gesture_handler
 class SWITCH:
@@ -467,7 +476,7 @@ def conf_gesture(lineargs):
             format(gesture, '" or "'.join([h.lower() for h in handlers]))
 
     # Add the configured gesture
-    return handler.add(motion.lower(), fingers, True if continuous else False, command)
+    return handler.add(motion.lower(), fingers, continuous, command)
 
 @add_conf_command
 def conf_device(lineargs):
@@ -484,7 +493,7 @@ def conf_swipe_threshold(lineargs):
     global swipe_min_threshold
 
     try:
-        swipe_min_threshold = int(lineargs)**2
+        swipe_min_threshold = int(lineargs)
     except Exception:
         return 'Must be integer value'
 
@@ -695,10 +704,10 @@ def read_conf(conffile, defname):
                                  cmd,
                                  continuous))
 
-            if swipe_min_threshold:
-                print('swipe_threshold {}'.format(math.sqrt(swipe_min_threshold)))
             if timeoutv != DEFAULT_TIMEOUT:
                 print('timeout {}'.format(timeoutv))
+        if swipe_min_threshold:
+            print('swipe_threshold {}'.format(swipe_min_threshold))
 
         if args.device:
             print('device {}'.format(args.device))
