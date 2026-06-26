@@ -510,12 +510,15 @@ class GESTURE:
             torun = torun.replace("{rel}", str(int(continuous[0])))
             torun = torun.replace("{total}", str(int(continuous[1])))
 
-        if args.verbose:
+        if args.verbose and (torun or not continuous):
             print('{}: {} {} {} {}'.\
                   format(PROGNAME, self.name, motion, fingers, self.data))
 
             if torun:
                 print('  ', torun)
+
+            if not continuous:
+                print('')
 
         if timeoutv > 0 and (self.starttime + timeoutv) < monotonic():
             if args.verbose:
