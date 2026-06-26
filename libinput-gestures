@@ -309,7 +309,7 @@ class SWIPE(GESTURE):
 
         return True
 
-    def end(self, cancelled):
+    def end(self, cancelled = False):
         'Action this gesture at the end of a motion sequence'
 
         if cancelled:
@@ -366,7 +366,7 @@ class PINCH(GESTURE):
 
         return True
 
-    def end(self, cancelled):
+    def end(self, cancelled = False):
         'Action this gesture at the end of a motion sequence'
 
         if cancelled:
@@ -876,7 +876,7 @@ def main():
                     if handler:
                         handler.begin("{}".format(nfingers))
                         handler.update(params)
-                        handler.end(False)
+                        handler.end()
                         handler = None
                     else:
                         print('unknown gesture received: {}.'.format(gesture), file = sys.stderr)
