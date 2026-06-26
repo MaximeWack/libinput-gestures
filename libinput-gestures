@@ -55,7 +55,7 @@ def open_lock(*args):
 
     return fp
 
-def run(cmd, *, check = True, block = True):
+def run(cmd, *, check = True, block = False):
     'Run function and return standard output, Popen() handle, or None'
     try:
         if block:
@@ -74,9 +74,9 @@ def run(cmd, *, check = True, block = True):
 def get_libinput_vers():
     'Return the libinput installed version number string'
     # Try to use newer libinput interface then fall back to old (depreciated) interface.
-    res = run(('libinput', '--version'), check = False)
+    res = run(('libinput', '--version'), check = False, block = True)
 
-    return res.strip() if res else run(('libinput-list-devices', '--version'), check = False)
+    return res.strip() if res else run(('libinput-list-devices', '--version'), check = False, block = True)
 
 def get_devices_list(cmd_list_devices, device_list):
     'Get list of devices and their attributes (as a dict) from libinput'
@@ -174,23 +174,6 @@ def get_device(name, cmd_list_devices, device_list):
 
     return dev
 
-class COMMAND:
-    'Generic command handler'
-    def __init__(self, args):
-        self.reprstr = ' '.join(args)
-
-        # Expand '~' and env vars in executable command name
-        args[0] = os.path.expandvars(os.path.expanduser(args[0]))
-        self.argslist = args
-
-    def run(self):
-        'Run this command + arguments'
-        run(self.argslist, block = False)
-
-    def __str__(self):
-        'Return string representation'
-        return self.reprstr
-
 # Table of gesture handlers
 handlers = {}
 
@@ -224,7 +207,7 @@ class GESTURE:
             self.has_continuous = True
 
         try:
-            self.actions[(motion, fingers, continuous)] = COMMAND(shlex.split(command))
+            self.actions[(motion, fingers, continuous)] = command
         except Exception as e:
             return str(e)
 
@@ -259,8 +242,8 @@ class GESTURE:
                 print('  ', 'timeout - no action')
             return
 
-        if command and not args.debug:
-            command.run()
+        if torun and not args.debug:
+            run(shlex.split(torun))
 
 @add_gesture_handler
 class SWIPE(GESTURE):
@@ -399,7 +382,7 @@ class SWITCH:
             return 'No command configured'
 
         try:
-            self.actions[(switch, state)] = COMMAND(shlex.split(command))
+            self.actions[(switch, state)] = command
         except Exception as e:
             return str(e)
 
@@ -417,7 +400,7 @@ class SWITCH:
                 print('  ', command)
 
         if command and not args.debug:
-            command.run()
+            run(command)
 
 # Table of configuration commands
 conf_commands = {}
@@ -655,7 +638,7 @@ def get_version():
               format(PROGNAME, xsession, xtype, platform.platform(), platform.python_version(), libvers))
 
         # Output hash version/checksum of this program
-        vers = run(('md5sum', str(PROGPATH)), check = False)
+        vers = run(('md5sum', str(PROGPATH)), check = False, block = True)
         vers = str(vers.split()[0]) if vers else '?'
         print('{}: hash {}'.format(PROGPATH, vers))
 
