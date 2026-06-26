@@ -619,10 +619,6 @@ def get_options():
                      '--debug',
                      action = 'store_true',
                      help = 'output diagnostic messages only, do not action gestures')
-    opt.add_argument('-r',
-                     '--raw',
-                     action = 'store_true',
-                     help = 'output raw libinput debug-event messages only, do not action gestures')
     opt.add_argument('-l',
                      '--list',
                      action = 'store_true',
@@ -634,7 +630,7 @@ def get_options():
                      help = argparse.SUPPRESS)
     args = opt.parse_args()
 
-    if args.debug or args.raw or args.list:
+    if args.debug or args.list:
         args.verbose = True
 
 def get_version():
@@ -691,23 +687,22 @@ def read_conf(conffile, defname):
 
     # List out available gestures if that is asked for
     if args.verbose:
-        if not args.raw:
-            print('Gestures configured in {}:'.format(confname))
-            for h in handlers.values():
-                for mpair, cmd in h.actions.items():
-                    action, fingers, *continuous = mpair
-                    continuous = '(continuous)' if len(continuous) > 0 and continuous[0] else ''
-                    print('{} {:10}{:>2} {} {}'.\
-                          format(h.name.lower(),
-                                 action,
-                                 fingers if fingers is not None else '',
-                                 cmd,
-                                 continuous))
+        print('Gestures configured in {}:'.format(confname))
+        for h in handlers.values():
+            for mpair, cmd in h.actions.items():
+                action, fingers, *continuous = mpair
+                continuous = '(continuous)' if len(continuous) > 0 and continuous[0] else ''
+                print('{} {:10}{:>2} {} {}'.\
+                        format(h.name.lower(),
+                                action,
+                                fingers if fingers is not None else '',
+                                cmd,
+                                continuous))
 
-            if timeoutv != DEFAULT_TIMEOUT:
-                print('timeout {}'.format(timeoutv))
         if swipe_min_threshold:
             print('swipe_threshold {}'.format(swipe_min_threshold))
+        if timeoutv != DEFAULT_TIMEOUT:
+            print('timeout {}'.format(timeoutv))
 
         if args.device:
             print('device {}'.format(args.device))
@@ -821,10 +816,9 @@ def main():
     for line in cmd.stdout:
         line = line.strip()
 
-        # Just output raw messages if in that mode
-        if args.raw:
+        # Output raw messages if debug
+        if args.debug:
             print(line)
-            continue
 
         if 'TOUCH_' in line:
             fields = touch_event_re.match(line)
