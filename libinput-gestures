@@ -34,6 +34,17 @@ OBLIQUE_RATIO = math.tan(math.radians(22.5))
 DEFAULT_SWIPE = 5
 swipe_min_threshold = DEFAULT_SWIPE
 
+DEFAULT_RATIO = .2
+ratio_min_threshold = DEFAULT_RATIO
+
+DEFAULT_ANGLE = 10
+angle_min_threshold = DEFAULT_ANGLE
+
+DEFAULT_UPDATE_TIMER = .1
+update_timer = DEFAULT_UPDATE_TIMER
+
+DEFAULT_REPEAT_TIMER = 1
+repeat_timer = DEFAULT_REPEAT_TIMER
 
 # Timeout on gesture action from start to end. 0 = no timeout. In secs.
 # Can be changed using configuration command.
@@ -347,14 +358,13 @@ def read_conf(conffile, defname):
         print('Gestures configured in {}:'.format(confname))
         for h in handlers.values():
             for mpair, cmd in h.actions.items():
-                action, fingers, *continuous = mpair
-                continuous = '(continuous)' if len(continuous) > 0 and continuous[0] else ''
+                action, fingers, *modifiers = mpair
                 print('{} {:10}{:>2} {} {}'.\
                         format(h.name.lower(),
                                 action,
                                 fingers if fingers is not None else '',
                                 cmd,
-                                continuous))
+                                modifiers))
 
         if swipe_min_threshold != DEFAULT_SWIPE:
             print('swipe_threshold {}'.format(swipe_min_threshold))
@@ -395,13 +405,13 @@ def conf_switch(lineargs):
     return handler.add(switch, state, command)
 
 conf_gesture_re = re.compile(r"""
-    (?P<gesture>swipe|pinch)                 # gesture name
+    (?P<gesture>swipe|pinch)                                                               # gesture name
     \s+
-    (?P<motion>((left|right)_)?up|((left|right)_)?down|left|right|in|out|(anti)?clockwise)   # gesture motion
+    (?P<motion>((left|right)_)?up|((left|right)_)?down|left|right|in|out|(anti)?clockwise) # gesture motion
     \s+
-    ((?P<fingers>\d) (?:\s+))?               # fingers
-    ((?P<continuous>continuous) (?:\s+))?    # continuous
-    (?P<command>.*)                          # command
+    ((?P<fingers>\d) (?:\s+))?                                                             # fingers
+    ((?P<modifier>continuous | repeat) (?:\s+))?                                           # modifier
+    (?P<command>.*)                                                                        # command
 """, flags = re.VERBOSE)
 
 @add_conf_command
@@ -413,7 +423,7 @@ def conf_gesture(lineargs):
     if not fields:
         return 'Invalid gesture line - not enough fields'
 
-    gesture, motion, fingers, continuous, command = fields.groupdict().values()
+    gesture, motion, fingers, modifier, command = fields.groupdict().values()
     handler = handlers.get(gesture.upper())
 
     if not handler:
@@ -421,7 +431,7 @@ def conf_gesture(lineargs):
             format(gesture, '" or "'.join([h.lower() for h in handlers]))
 
     # Add the configured gesture
-    return handler.add(motion.lower(), fingers, continuous, command)
+    return handler.add(motion.lower(), fingers, modifier, command)
 
 @add_conf_command
 def conf_device(lineargs):
@@ -443,6 +453,54 @@ def conf_swipe_threshold(lineargs):
         return 'Must be integer value'
 
     return None if swipe_min_threshold >= 0 else 'Must be >= 0'
+
+@add_conf_command
+def conf_ratio_threshold(lineargs):
+    'Change ratio threshold'
+    global ratio_min_threshold
+
+    try:
+        ratio_min_threshold = int(lineargs)
+    except Exception:
+        return 'Must be integer value'
+
+    return None if ratio_min_threshold >= 0 else 'Must be >= 0'
+
+@add_conf_command
+def conf_angle_threshold(lineargs):
+    'Change angle threshold'
+    global angle_min_threshold
+
+    try:
+        angle_min_threshold = int(lineargs)
+    except Exception:
+        return 'Must be integer value'
+
+    return None if angle_min_threshold >= 0 else 'Must be >= 0'
+
+@add_conf_command
+def conf_update_timer(lineargs):
+    'Change update timer'
+    global update_timer
+
+    try:
+        update_timer = int(lineargs)
+    except Exception:
+        return 'Must be integer value'
+
+    return None if update_timer >= 0 else 'Must be >= 0'
+
+@add_conf_command
+def conf_repeat_timer(lineargs):
+    'Change repeat timer'
+    global repeat_timer
+
+    try:
+        repeat_timer = int(lineargs)
+    except Exception:
+        return 'Must be integer value'
+
+    return None if repeat_timer >= 0 else 'Must be >= 0'
 
 @add_conf_command
 def conf_timeout(lineargs):
@@ -471,8 +529,9 @@ class GESTURE:
         self.actions = {}
         self.has_extended = False
         self.has_continuous = False
+        self.has_repeat = False
 
-    def add(self, motion, fingers, continuous, command):
+    def add(self, motion, fingers, modifier, command):
         'Add a configured motion command for this gesture'
         if motion not in self.SUPPORTED_MOTIONS:
             return 'Gesture {} does not support motion "{}".\nMust be "{}"'.\
@@ -485,11 +544,14 @@ class GESTURE:
         if self.extended_text in motion:
             self.has_extended = True
 
-        if continuous:
-            self.has_continuous = True
+        if modifier:
+            if modifier == "continuous":
+                self.has_continuous = True
+            elif modifier == "repeat":
+                self.has_repeat = True
 
         try:
-            self.actions[(motion, fingers, continuous)] = command
+            self.actions[(motion, fingers, modifier)] = command
         except Exception as e:
             return str(e)
 
@@ -498,13 +560,24 @@ class GESTURE:
     def begin(self, fingers):
         'Initialise this gesture at the start of motion'
         self.fingers = fingers
-        self.data = [0.0, 0.0]
+        self.data = [0.0, 0.0, 0.0, 0.0]
         self.starttime = monotonic()
+        self.uptime = 0
+        self.reptime = 0
+        self.motion = None
 
-    def action(self, motion, fingers, continuous = None):
+    def end(self, cancelled = False):
+        'Action this gesture at the end of a motion sequence'
+
+        if cancelled or not self.motion:
+            return
+
+        self.action(self.motion, self.fingers)
+
+    def action(self, motion, fingers, modifier = None, continuous = None):
         'Action a motion command for this gesture'
         # try full motion spec with finger count and fallback on no finger count specified
-        command = self.actions.get((motion, fingers, continuous and "continuous")) or self.actions.get((motion, None, continuous and "continuous"))
+        command = self.actions.get((motion, fingers, modifier)) or self.actions.get((motion, None, modifier))
 
         torun = command
 
@@ -547,64 +620,52 @@ class SWIPE(GESTURE):
 
         self.data[0] += x
         self.data[1] += y
+        self.data[2] += x
+        self.data[3] += y
 
-        if self.has_continuous:
-            cum_x, cum_y = self.data
-            abx = abs(x)
-            aby = abs(y)
+        rel_x, rel_y, total_x, total_y = self.data
 
-            dist = math.sqrt(x ** 2 + y ** 2)
-            cum_dist = math.sqrt(cum_x ** 2 + cum_y ** 2)
+        # Determine swipe direction after swipe_min_threshold has been traveled
+        if not self.motion:
+            total_dist = math.sqrt(total_x ** 2 + total_y ** 2)
 
-            # Require absolute distance movement beyond a small threshhold.
-            if dist < swipe_min_threshold:
+            # Require absolute distance movement beyond a small threshold to determine motion
+            if total_dist < swipe_min_threshold:
                 return True
 
             # Discriminate left/right or up/down.
             # If significant movement in both planes the consider it a oblique swipe (but only if any are configured)
-            if abx > aby:
-                motion = 'left' if x < 0 else 'right'
+            if abs(total_x) > abs(total_y):
+                motion = 'left' if total_x < 0 else 'right'
 
-                if self.has_extended and abx > 0 and aby / abx > OBLIQUE_RATIO:
-                    motion += '_up' if y < 0 else '_down'
+                if self.has_extended and abs(total_x) > 0 and abs(total_y) / abs(total_x) > OBLIQUE_RATIO:
+                    motion += '_up' if total_y < 0 else '_down'
             else:
-                motion = 'up' if y < 0 else 'down'
+                motion = 'up' if total_y < 0 else 'down'
 
-                if self.has_extended and aby > 0 and abx / aby > OBLIQUE_RATIO:
-                    motion = ('left_' if x < 0 else 'right_') + motion
+                if self.has_extended and abs(total_y) > 0 and abs(total_x) / abs(total_y) > OBLIQUE_RATIO:
+                    motion = ('left_' if total_x < 0 else 'right_') + motion
 
-            self.action(motion, self.fingers, (dist, cum_dist))
+            self.motion = motion
+
+        # Trigger action if motion is set and continuous actions are registered
+        if self.has_continuous and self.motion and monotonic() > self.uptime + update_timer:
+            if self.motion == "left":
+                self.action(self.motion, self.fingers, "continuous", (-rel_x, -total_x))
+            elif self.motion == "right":
+                self.action(self.motion, self.fingers, "continuous", (rel_x, total_x))
+            elif self.motion == "up":
+                self.action(self.motion, self.fingers, "continuous", (-rel_y, -total_y))
+            elif self.motion == "down":
+                self.action(self.motion, self.fingers, "continuous", (rel_y, total_y))
+            self.uptime = monotonic()
+            self.data[0], self.data[1] = 0, 0
+
+        if self.has_repeat and self.motion and monotonic() > self.reptime + repeat_timer:
+            self.action(self.motion, self.fingers, "repeat")
+            self.reptime = monotonic()
 
         return True
-
-    def end(self, cancelled = False):
-        'Action this gesture at the end of a motion sequence'
-
-        if cancelled:
-            return
-
-        x, y = self.data
-        abx = abs(x)
-        aby = abs(y)
-
-        # Require absolute distance movement beyond a small thresh-hold.
-        if abx**2 + aby**2 < swipe_min_threshold:
-            return
-
-        # Discriminate left/right or up/down.
-        # If significant movement in both planes the consider it a oblique swipe (but only if any are configured)
-        if abx > aby:
-            motion = 'left' if x < 0 else 'right'
-
-            if self.has_extended and abx > 0 and aby / abx > OBLIQUE_RATIO:
-                motion += '_up' if y < 0 else '_down'
-        else:
-            motion = 'up' if y < 0 else 'down'
-
-            if self.has_extended and aby > 0 and abx / aby > OBLIQUE_RATIO:
-                motion = ('left_' if x < 0 else 'right_') + motion
-
-        self.action(motion, self.fingers)
 
 @add_gesture_handler
 class PINCH(GESTURE):
@@ -616,36 +677,48 @@ class PINCH(GESTURE):
         'Update this gesture for a motion'
         # Ignore this update if we can not parse the numbers we expect
         try:
-            ratio = float(coords[4]) - 1
+            ratio = math.log(float(coords[4]))
             angle = float(coords[5])
         except (ValueError, IndexError):
             return False
 
-        self.data[0] += ratio
+        self.data[0] = ratio - self.data[0]
         self.data[1] += angle
+        self.data[2] = ratio
+        self.data[3] += angle
 
-        if self.has_continuous:
-            cum_ratio, cum_angle = self.data
+        rel_ratio, rel_angle, total_ratio, total_angle = self.data
 
-            if self.has_extended and abs(angle) > ROTATE_ANGLE:
-                self.action('clockwise' if angle >= 0.0 else 'anticlockwise', self.fingers, (angle, cum_angle))
-            elif ratio != 0.0:
-                self.action('in' if ratio <= 0.0 else 'out', self.fingers, (ratio, cum_ratio))
+        # Determine rotation/zoom
+        if not self.motion:
+            if abs(total_ratio) < ratio_min_threshold and abs(total_angle) < angle_min_threshold:
+                return True
+
+            if abs(total_ratio) >= ratio_min_threshold:
+                motion = 'in' if ratio < 0 else 'out'
+            else:
+                motion = 'clockwise' if angle > 0 else 'anticlockwise'
+
+            self.motion = motion
+
+        # Trigger action if motion is set and continuous actions are registered
+        if self.has_continuous and self.motion and monotonic() > self.uptime + update_timer:
+            if self.motion == "in":
+                self.action(self.motion, self.fingers, "continuous", (rel_ratio, total_ratio))
+            elif self.motion == "out":
+                self.action(self.motion, self.fingers, "continuous", (rel_ratio, total_ratio))
+            elif self.motion == "clockwise":
+                self.action(self.motion, self.fingers, "continuous", (rel_angle, total_angle))
+            elif self.motion == "anticlockwise":
+                self.action(self.motion, self.fingers, "continuous", (rel_angle, total_angle))
+            self.uptime = monotonic()
+            self.data[0], self.data[1] = 0, 0
+
+        if self.has_repeat and self.motion and monotonic() > self.reptime + repeat_timer:
+            self.action(self.motion, self.fingers, "repeat")
+            self.reptime = monotonic()
 
         return True
-
-    def end(self, cancelled = False):
-        'Action this gesture at the end of a motion sequence'
-
-        if cancelled:
-            return
-
-        ratio, angle = self.data
-
-        if self.has_extended and abs(angle) > ROTATE_ANGLE:
-            self.action('clockwise' if angle >= 0.0 else 'anticlockwise', self.fingers)
-        elif ratio != 0.0:
-            self.action('in' if ratio <= 0.0 else 'out', self.fingers)
 
 @add_gesture_handler
 class SWITCH:
