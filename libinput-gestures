@@ -31,14 +31,16 @@ OBLIQUE_RATIO = math.tan(math.radians(22.5))
 
 # Default minimum significant distance to move for swipes, in dots.
 # Can be changed using configuration command.
-swipe_min_threshold = 0
+DEFAULT_SWIPE = 5
+swipe_min_threshold = DEFAULT_SWIPE
 
-args = None
 
 # Timeout on gesture action from start to end. 0 = no timeout. In secs.
 # Can be changed using configuration command.
 DEFAULT_TIMEOUT = 1.5
 timeoutv = DEFAULT_TIMEOUT
+
+args = None
 
 # Rotation threshold in degrees to discriminate pinch rotate from in/out
 ROTATE_ANGLE = 15.0
@@ -354,7 +356,7 @@ def read_conf(conffile, defname):
                                 cmd,
                                 continuous))
 
-        if swipe_min_threshold:
+        if swipe_min_threshold != DEFAULT_SWIPE:
             print('swipe_threshold {}'.format(swipe_min_threshold))
         if timeoutv != DEFAULT_TIMEOUT:
             print('timeout {}'.format(timeoutv))
