@@ -382,11 +382,11 @@ def add_conf_command(func):
     conf_commands[re.sub('^conf_', '', func.__name__)] = func
 
 conf_switch_re = re.compile(r"""
-    (?P<switch>tablet-mode|lid|keypad-slide) # Switch name
-    \s+
-    (?P<state>on|off)                        # Toggle state
-    \s+
-    (?P<command>.*)                          # Command
+    (?P<switch> tablet-mode | lid | keypad-slide) # Switch name
+    \s*
+    (?P<state> on | off)                          # Toggle state
+    \s*
+    (?P<command> .*)                              # Command
 """, flags = re.VERBOSE)
 
 @add_conf_command
@@ -405,13 +405,15 @@ def conf_switch(lineargs):
     return handler.add(switch, state, command)
 
 conf_gesture_re = re.compile(r"""
-    (?P<gesture>swipe|pinch)                                                               # gesture name
-    \s+
-    (?P<motion>((left|right)_)?up|((left|right)_)?down|left|right|in|out|(anti)?clockwise) # gesture motion
-    \s+
-    ((?P<fingers>\d) (?:\s+))?                                                             # fingers
-    ((?P<modifier>continuous | repeat) (?:\s+))?                                           # modifier
-    (?P<command>.*)                                                                        # command
+    (?P<gesture> swipe | pinch)                                                                            # gesture name
+    \s*
+    (?P<motion> ((left|right)_)? up | ((left|right)_)? down | left | right | in | out | (anti)? clockwise) # gesture motion
+    \s*
+    (?P<fingers> \d)?                                                                                      # fingers
+    \s*
+    (?P<modifier> continuous | repeat)?                                                                    # modifier
+    \s*
+    (?P<command> .*)                                                                                       # command
 """, flags = re.VERBOSE)
 
 @add_conf_command
@@ -814,41 +816,47 @@ def touch_gesture(startPos, lastPos):
                 'params': [0, 0, 0, 0, ratio, angle / math.pi * 180]})
 
 touch_event_re = re.compile(r"""
-    .*?event\d+ \s+ TOUCH_          # Prefix
-    (?P<event>UP|DOWN|FRAME|MOTION) # Event
-    \s+
-    (?:\d+\s+)?                     # Event number within frame
-    \+ (?P<time>\d+\.\d+) s         # Time
-    ((?:\s+) (?P<params>.*))?       # Params
+    .*?event\d+ \s+ TOUCH_                 # Prefix
+    (?P<event> UP | DOWN | FRAME | MOTION) # Event
+    \s*
+    (?:\d+)?                               # Event number within frame
+    \s*
+    \+ (?P<time> \d+\.\d+) s               # Time
+    \s*
+    (?P<params> .*)?                       # Params
 """, flags = re.VERBOSE)
 
 touch_params_re = re.compile(r"""
-    (?P<finger>\d) \s+ \( (?P=finger) \)   # Finger
-    \s+
-    (?P<x>\d+\.\d+) /\s* (?P<y>\d+\.\d+)   # Absolute position 0-100% of width/height
+    (?P<finger> \d)                        # Finger
+    \s*
+    \( (?P=finger) \)
+    \s*
+    (?P<x> \d+\.\d+) /\s* (?P<y> \d+\.\d+) # Absolute position 0-100% of width/height
 """, flags = re.VERBOSE)
 
 switch_event_re = re.compile(r"""
-    .*?event\d+ \s+ SWITCH_TOGGLE # Prefix
-    \s+
-    \+ (?P<time>\d+\.\d+) s    # Time
-    \s+
-    switch \s+ (?P<switch>tablet-mode|lid|keypad-slide) # Switch name
-    \s+
-    state \s+ (?P<state>0|1)  # State
+    .*?event\d+ \s+ SWITCH_TOGGLE                            # Prefix
+    \s*
+    \+ (?P<time> \d+\.\d+) s                                 # Time
+    \s*
+    switch \s+ (?P<switch> tablet-mode | lid | keypad-slide) # Switch name
+    \s*
+    state \s+ (?P<state> 0 | 1)                              # State
 """, flags = re.VERBOSE)
 
 gesture_event_re = re.compile(r"""
-    .*?event\d+ \s+ GESTURE_      # Prefix
-    (?P<gesture>SWIPE|PINCH|HOLD) # Gesture
+    .*?event\d+ \s+ GESTURE_           # Prefix
+    (?P<gesture> SWIPE | PINCH | HOLD) # Gesture
     _
-    (?P<event>BEGIN|UPDATE|END)   # Event
-    \s+
-    (?:\d+\s+)?                   # Update frame number
-    \+ (?P<time>\d+\.\d+) s       # Time
-    \s+
-    (?P<fingers>\d)               # Fingers
-    ((?:\s+) (?P<params>.*))?     # Params
+    (?P<event> BEGIN | UPDATE | END)   # Event
+    \s*
+    (?: \d+)?                          # Update frame number
+    \s*
+    \+ (?P<time> \d+\.\d+) s           # Time
+    \s*
+    (?P<fingers> \d)                   # Fingers
+    \s*
+    (?P<params> .*)?                   # Params
 """, flags = re.VERBOSE)
 
 def main():
