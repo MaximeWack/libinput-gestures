@@ -25,32 +25,17 @@ CONFNAME = f'{PROGNAME}.conf'
 USERDIR = os.getenv('XDG_CONFIG_HOME', os.path.expanduser('~/.config'))
 CONFDIRS = (USERDIR, '/etc')
 
-# Default minimum significant distance to move for swipes, in dots.
-# Can be changed using configuration command.
-DEFAULT_SWIPE = 5
-swipe_min_threshold = DEFAULT_SWIPE
-
-DEFAULT_RATIO = .2
-ratio_min_threshold = DEFAULT_RATIO
-
-DEFAULT_ANGLE = 10
-angle_min_threshold = DEFAULT_ANGLE
-
-DEFAULT_UPDATE_TIMER = .1
-update_timer = DEFAULT_UPDATE_TIMER
-
-DEFAULT_REPEAT_TIMER = 1
-repeat_timer = DEFAULT_REPEAT_TIMER
-
-# Timeout on gesture action from start to end. 0 = no timeout. In secs.
-# Can be changed using configuration command.
-DEFAULT_TIMEOUT = 1.5
-timeoutv = DEFAULT_TIMEOUT
+# Configurable options with their default values
+OPTIONS = dict(
+    swipe_min_threshold = 5,
+    ratio_min_threshold = .2,
+    angle_min_threshold = 10,
+    update_timer = .1,
+    repeat_timer = 1,
+    timeout = 1.5,
+    device = "all")
 
 args = None
-
-# Rotation threshold in degrees to discriminate pinch rotate from in/out
-ROTATE_ANGLE = 15.0
 
 def open_lock(*args):
     'Create a lock based on given list of arguments'
@@ -228,8 +213,8 @@ def get_device(name, cmd_list_devices):
     return dev
 
 def get_touchpad(cmd_list_devices):
-    if not args.device or args.device.lower() != "all":
-        device = get_device(args.device, cmd_list_devices, args.device_list)
+    if not OPTIONS["device"] or OPTIONS["device"].lower() != "all":
+        device = get_device(OPTIONS["device"], cmd_list_devices)
 
         if not device:
             sys.exit('Could not determine touchpad device.')
@@ -295,16 +280,15 @@ def get_conf_line(line):
     'Process a single line in conf file'
     key, *argslist = line.split(maxsplit = 1)
 
-    # Old format conf files may have a ":" appended to the key
-    key = key.rstrip(':')
-    conf_func = conf_commands.get(key)
+    if key in list(OPTIONS):
+        return conf_option(key, argslist[0])
+    else:
+        conf_func = conf_commands.get(key)
 
-    if not conf_func:
-        return 'Configuration command "{}" is not supported.\nMust be "{}"'.\
-            format(key, '" or "'.join(conf_commands))
+        if not conf_func:
+            return f'Configuration command "{key}" is not supported.\nMust be "{" or ".join(conf_commands)}"'
 
-
-    return conf_func(argslist[0] if argslist else '')
+        return conf_func(argslist[0] if argslist else '')
 
 # Search for configuration file. Use file given as command line argument,
 # else look for file in search dir order.
@@ -338,13 +322,11 @@ def read_conf(conffile, defname):
                 action, fingers, *modifiers = mpair
                 print(f'{h.name.lower()} {action:15}{fingers if fingers is not None else '':>2} {cmd} {modifiers}')
 
-        if swipe_min_threshold != DEFAULT_SWIPE:
-            print('swipe_threshold {}'.format(swipe_min_threshold))
-        if timeoutv != DEFAULT_TIMEOUT:
-            print('timeout {}'.format(timeoutv))
-
-        if args.device:
-            print('device {}'.format(args.device))
+        print()
+        print('OPTIONS:')
+        for option, value in OPTIONS.items():
+            print(option, value)
+        print()
 
 # Table of configuration commands
 conf_commands = {}
@@ -406,86 +388,13 @@ def conf_gesture(lineargs):
     # Add the configured gesture
     return handler.add(motion.lower(), fingers, modifier, command)
 
-@add_conf_command
-def conf_device(lineargs):
-    'Process a single device line in conf file'
-    # Command line overrides configuration file
-    if not args.device:
-        args.device = lineargs
-
-    return None if args.device else 'No device specified'
-
-@add_conf_command
-def conf_swipe_threshold(lineargs):
-    'Change swipe threshold'
-    global swipe_min_threshold
-
+def conf_option(option, value):
     try:
-        swipe_min_threshold = int(lineargs)
-    except Exception:
-        return 'Must be integer value'
+        OPTIONS[option] = float(value)
+    except:
+        OPTIONS[option] = str(value)
 
-    return None if swipe_min_threshold >= 0 else 'Must be >= 0'
-
-@add_conf_command
-def conf_ratio_threshold(lineargs):
-    'Change ratio threshold'
-    global ratio_min_threshold
-
-    try:
-        ratio_min_threshold = int(lineargs)
-    except Exception:
-        return 'Must be integer value'
-
-    return None if ratio_min_threshold >= 0 else 'Must be >= 0'
-
-@add_conf_command
-def conf_angle_threshold(lineargs):
-    'Change angle threshold'
-    global angle_min_threshold
-
-    try:
-        angle_min_threshold = int(lineargs)
-    except Exception:
-        return 'Must be integer value'
-
-    return None if angle_min_threshold >= 0 else 'Must be >= 0'
-
-@add_conf_command
-def conf_update_timer(lineargs):
-    'Change update timer'
-    global update_timer
-
-    try:
-        update_timer = int(lineargs)
-    except Exception:
-        return 'Must be integer value'
-
-    return None if update_timer >= 0 else 'Must be >= 0'
-
-@add_conf_command
-def conf_repeat_timer(lineargs):
-    'Change repeat timer'
-    global repeat_timer
-
-    try:
-        repeat_timer = int(lineargs)
-    except Exception:
-        return 'Must be integer value'
-
-    return None if repeat_timer >= 0 else 'Must be >= 0'
-
-@add_conf_command
-def conf_timeout(lineargs):
-    'Change gesture timeout'
-    global timeoutv
-
-    try:
-        timeoutv = float(lineargs)
-    except Exception:
-        return 'Must be float value'
-
-    return None if timeoutv >= 0 else 'Must be >= 0'
+    return None
 
 # Table of gesture handlers
 handlers = {}
@@ -561,9 +470,9 @@ class GESTURE:
             if not continuous:
                 print('')
 
-        if timeoutv > 0 and (self.starttime + timeoutv) < monotonic():
+        if OPTIONS["timeout"] > 0 and (self.starttime + OPTIONS["timeout"]) < monotonic():
             if args.verbose:
-                print('  ', 'timeout - no action')
+                print('  timeout - no action')
             return
 
         if torun and not args.debug:
@@ -595,7 +504,7 @@ class SWIPE(GESTURE):
             total_dist = math.sqrt(total_x ** 2 + total_y ** 2)
 
             # Require absolute distance movement beyond a small threshold to determine motion
-            if total_dist < swipe_min_threshold:
+            if total_dist < OPTIONS["swipe_min_threshold"]:
                 return True
 
             # Discriminate left/right or up/down.
@@ -607,7 +516,7 @@ class SWIPE(GESTURE):
             self.motion = motion
 
         # Trigger action if motion is set and continuous actions are registered
-        if self.has_continuous and self.motion and monotonic() > self.uptime + update_timer:
+        if self.has_continuous and self.motion and monotonic() > self.uptime + OPTIONS["update_timer"]:
             if self.motion == "left":
                 self.action(self.motion, self.fingers, "continuous", (-rel_x, -total_x))
             elif self.motion == "right":
@@ -619,7 +528,7 @@ class SWIPE(GESTURE):
             self.uptime = monotonic()
             self.data[0], self.data[1] = 0, 0
 
-        if self.has_repeat and self.motion and monotonic() > self.reptime + repeat_timer:
+        if self.has_repeat and self.motion and monotonic() > self.reptime + OPTIONS["repeat_timer"]:
             self.action(self.motion, self.fingers, "repeat")
             self.reptime = monotonic()
 
@@ -648,10 +557,10 @@ class PINCH(GESTURE):
 
         # Determine rotation/zoom
         if not self.motion:
-            if abs(total_ratio) < ratio_min_threshold and abs(total_angle) < angle_min_threshold:
+            if abs(total_ratio) < OPTIONS["ratio_min_threshold"] and abs(total_angle) < OPTIONS["angle_min_threshold"]:
                 return True
 
-            if abs(total_angle) >= angle_min_threshold:
+            if abs(total_angle) >= OPTIONS["angle_min_threshold"]:
                 motion = 'clockwise' if angle > 0 else 'anticlockwise'
             else:
                 motion = 'in' if ratio < 0 else 'out'
@@ -659,7 +568,7 @@ class PINCH(GESTURE):
             self.motion = motion
 
         # Trigger action if motion is set and continuous actions are registered
-        if self.has_continuous and self.motion and monotonic() > self.uptime + update_timer:
+        if self.has_continuous and self.motion and monotonic() > self.uptime + OPTIONS["update_timer"]:
             if self.motion == "in":
                 self.action(self.motion, self.fingers, "continuous", (rel_ratio, total_ratio))
             elif self.motion == "out":
@@ -671,7 +580,7 @@ class PINCH(GESTURE):
             self.uptime = monotonic()
             self.data[0], self.data[1] = 0, 0
 
-        if self.has_repeat and self.motion and monotonic() > self.reptime + repeat_timer:
+        if self.has_repeat and self.motion and monotonic() > self.reptime + OPTIONS["repeat_timer"]:
             self.action(self.motion, self.fingers, "repeat")
             self.reptime = monotonic()
 
@@ -765,10 +674,10 @@ def touch_gesture(startPos, lastPos):
         ratio = 1
         angle = 0
 
-    if abs(angle) > angle_min_threshold:
+    if abs(angle) > OPTIONS["angle_min_threshold"]:
         return({'gesture': 'PINCH',
                 'params': [0, 0, 0, 0, ratio, angle]})
-    elif abs(math.log(ratio)) > ratio_min_threshold:
+    elif abs(math.log(ratio)) > OPTIONS["ratio_min_threshold"]:
         return({'gesture': 'PINCH',
                 'params': [0, 0, 0, 0, ratio, angle]})
     else:
