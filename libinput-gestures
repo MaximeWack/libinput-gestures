@@ -250,10 +250,6 @@ def get_touchpad(cmd_list_devices):
         else:
             print('{}: monitoring all devices'.format(PROGNAME))
 
-    # If just called to list out above environment info then exit now
-    if args.list:
-        sys.exit()
-
     return device
 
 def get_options():
@@ -270,10 +266,6 @@ def get_options():
                      '--debug',
                      action = 'store_true',
                      help = 'output diagnostic messages only, do not action gestures')
-    opt.add_argument('-l',
-                     '--list',
-                     action = 'store_true',
-                     help = 'just list out environment and configuration')
     opt.add_argument('--device',
                      help = 'explicit device name to use (or path if starts with /)')
     # Test/diag hidden option to specify a file containing libinput list device output to parse
@@ -281,7 +273,7 @@ def get_options():
                      help = argparse.SUPPRESS)
     args = opt.parse_args()
 
-    if args.debug or args.list:
+    if args.debug:
         args.verbose = True
 
 def unexpanduser(cfile):
