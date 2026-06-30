@@ -136,13 +136,9 @@ def listen_libinput(cmd_debug_events, device):
 
     return cmd
 
-def get_devices_list(cmd_list_devices, device_list):
+def get_devices_list(cmd_list_devices):
     'Get list of devices and their attributes (as a dict) from libinput'
-    if device_list:
-        with open(device_list) as fd:
-            stdout = fd.read()
-    else:
-        stdout = run(cmd_list_devices.split())
+    stdout = run(cmd_list_devices.split())
 
     if stdout:
         dev = {}
@@ -161,9 +157,9 @@ def get_devices_list(cmd_list_devices, device_list):
         if dev:
             yield dev
 
-def get_device_info(name, cmd_list_devices, device_list):
+def get_device_info(name, cmd_list_devices):
     'Determine libinput touchpad device and return device info'
-    devices = list(get_devices_list(cmd_list_devices, device_list))
+    devices = list(get_devices_list(cmd_list_devices))
 
     if not devices:
         print('Can not see any devices, did you add yourself to the input group and log out/in?', file = sys.stderr)
@@ -202,9 +198,9 @@ def get_device_info(name, cmd_list_devices, device_list):
     # Give up
     return None
 
-def get_device(name, cmd_list_devices, device_list):
+def get_device(name, cmd_list_devices):
     'Determine libinput touchpad device and add fixed path info'
-    dev = get_device_info(name, cmd_list_devices, device_list)
+    dev = get_device_info(name, cmd_list_devices)
 
     if dev:
         devname = dev.get('kernel')
@@ -265,9 +261,6 @@ def get_options():
                      help = 'output diagnostic messages only, do not action gestures')
     opt.add_argument('--device',
                      help = 'explicit device name to use (or path if starts with /)')
-    # Test/diag hidden option to specify a file containing libinput list device output to parse
-    opt.add_argument('--device-list',
-                     help = argparse.SUPPRESS)
     args = opt.parse_args()
 
     if args.debug:
