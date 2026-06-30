@@ -25,10 +25,6 @@ CONFNAME = '{}.conf'.format(PROGNAME)
 USERDIR = os.getenv('XDG_CONFIG_HOME', os.path.expanduser('~/.config'))
 CONFDIRS = (USERDIR, '/etc')
 
-# Ratio of X/Y (or Y/X) at which we consider an oblique swipe gesture.
-# The number is the trigger angle in degrees and set to 360/8/2.
-OBLIQUE_RATIO = math.tan(math.radians(22.5))
-
 # Default minimum significant distance to move for swipes, in dots.
 # Can be changed using configuration command.
 DEFAULT_SWIPE = 5
@@ -405,15 +401,15 @@ def conf_switch(lineargs):
     return handler.add(switch, state, command)
 
 conf_gesture_re = re.compile(r"""
-    (?P<gesture> swipe | pinch)                                                                            # gesture name
+    (?P<gesture> swipe | pinch)                                          # gesture name
     \s*
-    (?P<motion> ((left|right)_)? up | ((left|right)_)? down | left | right | in | out | (anti)? clockwise) # gesture motion
+    (?P<motion> up | down | left | right | in | out | (anti)? clockwise) # gesture motion
     \s*
-    (?P<fingers> \d)?                                                                                      # fingers
+    (?P<fingers> \d)?                                                    # fingers
     \s*
-    (?P<modifier> continuous | repeat)?                                                                    # modifier
+    (?P<modifier> continuous | repeat)?                                  # modifier
     \s*
-    (?P<command> .*)                                                                                       # command
+    (?P<command> .*)                                                     # command
 """, flags = re.VERBOSE)
 
 @add_conf_command
@@ -529,7 +525,6 @@ class GESTURE:
         'Initialise this gesture at program start'
         self.name = type(self).__name__
         self.actions = {}
-        self.has_extended = False
         self.has_continuous = False
         self.has_repeat = False
 
@@ -541,10 +536,6 @@ class GESTURE:
 
         if not command:
             return 'No command configured'
-
-        # If any extended gestures configured then set flag to enable their discrimination
-        if self.extended_text in motion:
-            self.has_extended = True
 
         if modifier:
             if modifier == "continuous":
@@ -608,8 +599,7 @@ class GESTURE:
 @add_gesture_handler
 class SWIPE(GESTURE):
     'Class to handle this type of gesture'
-    SUPPORTED_MOTIONS = ('left', 'right', 'up', 'down', 'left_up', 'right_up', 'left_down', 'right_down')
-    extended_text = '_'
+    SUPPORTED_MOTIONS = ('left', 'right', 'up', 'down')
 
     def update(self, coords):
         'Update this gesture for a motion'
@@ -636,17 +626,10 @@ class SWIPE(GESTURE):
                 return True
 
             # Discriminate left/right or up/down.
-            # If significant movement in both planes the consider it a oblique swipe (but only if any are configured)
             if abs(total_x) > abs(total_y):
                 motion = 'left' if total_x < 0 else 'right'
-
-                if self.has_extended and abs(total_x) > 0 and abs(total_y) / abs(total_x) > OBLIQUE_RATIO:
-                    motion += '_up' if total_y < 0 else '_down'
             else:
                 motion = 'up' if total_y < 0 else 'down'
-
-                if self.has_extended and abs(total_y) > 0 and abs(total_x) / abs(total_y) > OBLIQUE_RATIO:
-                    motion = ('left_' if total_x < 0 else 'right_') + motion
 
             self.motion = motion
 
@@ -673,7 +656,6 @@ class SWIPE(GESTURE):
 class PINCH(GESTURE):
     'Class to handle this type of gesture'
     SUPPORTED_MOTIONS = ('in', 'out', 'clockwise', 'anticlockwise')
-    extended_text = 'clock'
 
     def update(self, coords):
         'Update this gesture for a motion'
