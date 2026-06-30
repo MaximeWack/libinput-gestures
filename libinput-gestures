@@ -898,29 +898,29 @@ def main():
 
             event, time, params = fields.groupdict().values()
 
-            # skip FRAME event and return
-            if event == 'FRAME':
-                continue
-
-            # skip UP event
-            elif event == 'UP':
-                finger, fingerp, pos, realpos, x, y = None, None, None, None, None, None
-
-            # parse params for DOWN and MOTION
-            else:
-                fields = touch_params_re.match(params)
-
-                if not fields:
-                    print('Unknown touch gesture parameters received: {}.'.format(params, file = sys.stderr))
-                    return
-
-                finger, x, y = fields.groupdict().values()
-
-                finger = int(finger)
-                x = float(x)
-                y = float(y)
-
             if ready:
+                # skip FRAME event and return
+                if event == 'FRAME':
+                    continue
+
+                # skip UP event
+                elif event == 'UP':
+                    finger, fingerp, pos, realpos, x, y = None, None, None, None, None, None
+
+                # parse params for DOWN and MOTION
+                else:
+                    fields = touch_params_re.match(params)
+
+                    if not fields:
+                        print('Unknown touch gesture parameters received: {}.'.format(params, file = sys.stderr))
+                        return
+
+                    finger, x, y = fields.groupdict().values()
+
+                    finger = int(finger)
+                    x = float(x)
+                    y = float(y)
+
                 # Track each new finger and store its starting position
                 if event == 'DOWN':
                     lastPos.append((x, y))
@@ -954,7 +954,6 @@ def main():
                     lastPos = []
                     startPos = []
                     ready = True
-                    handler = None
                 continue
 
         if "SWITCH_" in line:
