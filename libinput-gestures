@@ -72,34 +72,7 @@ def get_libinput_vers():
 
     return res.strip() if res else run(('libinput-list-devices', '--version'), check = False, block = True)
 
-def get_version():
-    # Libinput changed the way in which it's utilities are called
-    libvers = get_libinput_vers()
-
-    if not libvers:
-        sys.exit('libinput helper tools do not seem to be installed?')
-
-    if Version(libvers) >= Version('1.8'):
-        cmd_debug_events = 'libinput debug-events'
-        cmd_list_devices = 'libinput list-devices'
-    else:
-        cmd_debug_events = 'libinput-debug-events'
-        cmd_list_devices = 'libinput-list-devices'
-
-    if args.verbose:
-        # Output various info/version info
-        xsession = os.getenv('XDG_SESSION_DESKTOP') or os.getenv('DESKTOP_SESSION') or 'unknown'
-        xtype = os.getenv('XDG_SESSION_TYPE') or 'unknown'
-        print(f'{PROGNAME}: session {xsession}+{xtype} on {platform.platform()}, python {platform.python_version()}, libinput {libvers}')
-
-        # Output hash version/checksum of this program
-        vers = run(('md5sum', str(PROGPATH)), check = False, block = True)
-        vers = str(vers.split()[0]) if vers else '?'
-        print(f'{PROGPATH}: hash {vers}')
-
-    return (cmd_debug_events, cmd_list_devices)
-
-def listen_libinput(cmd_debug_events, device):
+def listen_libinput(device):
     # Make sure only one instance running for current user
     user = getpass.getuser()
     proglock = open_lock(PROGNAME, user)
@@ -109,7 +82,7 @@ def listen_libinput(cmd_debug_events, device):
     # User needs to belong to the input group to access the device
     # "sudo gpasswd -a $USER input" then log out/in
     devstr = f' --device {device.get("_path")}' if device else ''
-    command = f'stdbuf -oL -- {cmd_debug_events}{devstr}'
+    command = f'stdbuf -oL -- libinput debug-events {devstr}'
 
     cmd = subprocess.Popen(shlex.split(command),
                            stdout = subprocess.PIPE,
@@ -121,9 +94,9 @@ def listen_libinput(cmd_debug_events, device):
 
     return cmd
 
-def get_devices_list(cmd_list_devices):
+def get_devices_list():
     'Get list of devices and their attributes (as a dict) from libinput'
-    stdout = run(cmd_list_devices.split())
+    stdout = run("libinput", "list-devices")
 
     if stdout:
         dev = {}
@@ -142,9 +115,9 @@ def get_devices_list(cmd_list_devices):
         if dev:
             yield dev
 
-def get_device_info(name, cmd_list_devices):
+def get_device_info(name):
     'Determine libinput touchpad device and return device info'
-    devices = list(get_devices_list(cmd_list_devices))
+    devices = list(get_devices_list())
 
     if not devices:
         print('Can not see any devices, did you add yourself to the input group and log out/in?', file = sys.stderr)
@@ -183,9 +156,9 @@ def get_device_info(name, cmd_list_devices):
     # Give up
     return None
 
-def get_device(name, cmd_list_devices):
+def get_device(name):
     'Determine libinput touchpad device and add fixed path info'
-    dev = get_device_info(name, cmd_list_devices)
+    dev = get_device_info(name)
 
     if dev:
         devname = dev.get('kernel')
@@ -212,9 +185,9 @@ def get_device(name, cmd_list_devices):
 
     return dev
 
-def get_touchpad(cmd_list_devices):
+def get_touchpad():
     if not OPTIONS["device"] or OPTIONS["device"].lower() != "all":
-        device = get_device(OPTIONS["device"], cmd_list_devices)
+        device = get_device(OPTIONS["device"])
 
         if not device:
             sys.exit('Could not determine touchpad device.')
@@ -732,17 +705,27 @@ def main():
     # Set up command line arguments
     get_options()
 
-    # Check libinput version and get corresponding commands
-    cmd_debug_events, cmd_list_devices = get_version()
+    libvers = get_libinput_vers()
+
+    if args.verbose:
+        # Output various info/version info
+        xsession = os.getenv('XDG_SESSION_DESKTOP') or os.getenv('DESKTOP_SESSION') or 'unknown'
+        xtype = os.getenv('XDG_SESSION_TYPE') or 'unknown'
+        print(f'{PROGNAME}: session {xsession}+{xtype} on {platform.platform()}, python {platform.python_version()}, libinput {libvers}')
+
+        # Output hash version/checksum of this program
+        vers = run(('md5sum', str(PROGPATH)), check = False, block = True)
+        vers = str(vers.split()[0]) if vers else '?'
+        print(f'{PROGPATH}: hash {vers}')
 
     # Read and process the conf file
     read_conf(args.conffile, CONFNAME)
 
     # Get touchpad device
-    device = get_touchpad(cmd_list_devices)
+    device = get_touchpad()
 
     # Listen to libinput debug-events
-    cmd = listen_libinput(cmd_debug_events, device)
+    cmd = listen_libinput(device)
 
     # Sit in a loop forever reading the libinput messages.
     handler = None
