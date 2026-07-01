@@ -25,15 +25,50 @@ CONFNAME = f'{PROGNAME}.conf'
 USERDIR = os.getenv('XDG_CONFIG_HOME', os.path.expanduser('~/.config'))
 CONFDIRS = (USERDIR, '/etc')
 
-# Configurable options with their default values
-OPTIONS = dict(
-    swipe_min_threshold = 5,
-    ratio_min_threshold = .2,
-    angle_min_threshold = 10,
-    update_timer = .1,
-    repeat_timer = 1,
-    timeout = 1.5,
-    device = "all")
+# Singleton class for storing options
+class OPTIONS:
+    # Configurable options with their default values and validation functions
+    available = dict(
+        swipe_min_threshold = dict(default = 5    ,valid = float, help = "Minimum travel distance to register a swipe"),
+        ratio_min_threshold = dict(default = .2   ,valid = float, help = "Minimum ratio to register a pinch"),
+        angle_min_threshold = dict(default = 10   ,valid = float, help = "Minimum angle to register a rotation"),
+        update_timer        = dict(default = .1   ,valid = float, help = "Time interval at which update a continuous motion"),
+        repeat_timer        = dict(default = 1    ,valid = float, help = "Time interval at which trigger a repeating motion"),
+        timeout             = dict(default = 1.5  ,valid = float, help = "Maximum time after which a gesture is cancelled"),
+        device              = dict(default = "all",valid = str, help = '"all", or device name, or device path'))
+
+    # Create attributes from the dict and set default values
+    def __init__(self):
+        for opt, params in self.available.items():
+            setattr(self, opt, params["default"])
+
+    def set(self, option, value):
+        arg = getattr(args, option)
+        valid = self.available[option]["valid"]
+
+        if arg:
+            try:
+                setattr(self, option, valid(arg))
+                return None
+            except:
+                print(f'Option {option} must be of type {valid.__name__}. Falling back on default')
+                return None
+        else:
+            try:
+                setattr(self, option, valid(value))
+                return None
+            except:
+                return f'Option {option} must be of type {valid.__name__}'
+
+    instance = None
+
+    def __new__(cls):
+        if cls.instance is None:
+            cls.instance = super().__new__(cls)
+            return cls.instance
+
+# Create the singleton options object
+options = OPTIONS()
 
 args = None
 
@@ -186,8 +221,8 @@ def get_device(name):
     return dev
 
 def get_touchpad():
-    if not OPTIONS["device"] or OPTIONS["device"].lower() != "all":
-        device = get_device(OPTIONS["device"])
+    if not options.device or options.device != "all":
+        device = get_device(options.device)
 
         if not device:
             sys.exit('Could not determine touchpad device.')
@@ -217,8 +252,9 @@ def get_options():
                      '--debug',
                      action = 'store_true',
                      help = 'output diagnostic messages only, do not action gestures')
-    opt.add_argument('--device',
-                     help = 'explicit device name to use (or path if starts with /)')
+    for option, params in options.available.items():
+        opt.add_argument('--' + option,
+                         help = params["help"])
     args = opt.parse_args()
 
     if args.debug:
@@ -234,34 +270,6 @@ def unexpanduser(cfile):
         relhome = None
 
     return ('~/' + str(relhome)) if relhome else str(relslash)
-
-def get_conf(conffile, confname):
-    'Read given configuration file and store internal actions etc'
-    with conffile.open() as fp:
-        for num, line in enumerate(fp, 1):
-            line = line.strip()
-
-            if not line or line[0] == '#':
-                continue
-
-            errmsg = get_conf_line(line)
-
-            if errmsg:
-                sys.exit(f'Error at line {num} in file {confname}:\n>> {line} <<\n{errmsg}.')
-
-def get_conf_line(line):
-    'Process a single line in conf file'
-    key, *argslist = line.split(maxsplit = 1)
-
-    if key in list(OPTIONS):
-        return conf_option(key, argslist[0])
-    else:
-        conf_func = conf_commands.get(key)
-
-        if not conf_func:
-            return f'Configuration command "{key}" is not supported.\nMust be "{" or ".join(conf_commands)}"'
-
-        return conf_func(argslist[0] if argslist else '')
 
 # Search for configuration file. Use file given as command line argument,
 # else look for file in search dir order.
@@ -288,18 +296,50 @@ def read_conf(conffile, defname):
 
     # List out available gestures if that is asked for
     if args.verbose:
-        print()
-        print(f'Gestures configured in {confname}:')
+        print('', f'Gestures configured in {confname}:', sep = '\n')
         for h in handlers.values():
             for mpair, cmd in h.actions.items():
                 action, fingers, *modifiers = mpair
                 print(f'{h.name.lower()} {action:15}{fingers if fingers is not None else '':>2} {cmd} {modifiers}')
 
+        print('', 'OPTIONS:', sep = '\n')
+        for option, params in options.available.items():
+            value = getattr(options, option)
+            default = params["default"]
+            if value != default:
+                print(f'{option:20} {value:>5} ({default=})')
+            else:
+                print(f'{option:20} {value:>5}')
+
         print()
-        print('OPTIONS:')
-        for option, value in OPTIONS.items():
-            print(option, value)
-        print()
+
+def get_conf(conffile, confname):
+    'Read given configuration file and store internal actions etc'
+    with conffile.open() as fp:
+        for num, line in enumerate(fp, 1):
+            line = line.strip().lower()
+
+            if not line or line[0] == '#':
+                continue
+
+            errmsg = get_conf_line(line)
+
+            if errmsg:
+                sys.exit(f'Error at line {num} in file {confname}:\n>> {line} <<\n{errmsg}.')
+
+def get_conf_line(line):
+    'Process a single line in conf file'
+    key, *argslist = line.split(maxsplit = 1)
+
+    if key in list(options.available):
+        return options.set(key, argslist[0])
+    else:
+        conf_func = conf_commands.get(key)
+
+        if not conf_func:
+            return f'Configuration command "{key}" is not supported.\nMust be "{" or ".join(conf_commands)}"'
+
+        return conf_func(argslist[0] if argslist else '')
 
 # Table of configuration commands
 conf_commands = {}
@@ -360,14 +400,6 @@ def conf_gesture(lineargs):
 
     # Add the configured gesture
     return handler.add(motion.lower(), fingers, modifier, command)
-
-def conf_option(option, value):
-    try:
-        OPTIONS[option] = float(value)
-    except:
-        OPTIONS[option] = str(value)
-
-    return None
 
 # Table of gesture handlers
 handlers = {}
@@ -443,7 +475,7 @@ class GESTURE:
             if not continuous:
                 print('')
 
-        if OPTIONS["timeout"] > 0 and (self.starttime + OPTIONS["timeout"]) < monotonic():
+        if options.timeout > 0 and (self.starttime + options.timeout) < monotonic():
             if args.verbose:
                 print('  timeout - no action')
             return
@@ -477,7 +509,7 @@ class SWIPE(GESTURE):
             total_dist = math.sqrt(total_x ** 2 + total_y ** 2)
 
             # Require absolute distance movement beyond a small threshold to determine motion
-            if total_dist < OPTIONS["swipe_min_threshold"]:
+            if total_dist < options.swipe_min_threshold:
                 return True
 
             # Discriminate left/right or up/down.
@@ -489,7 +521,7 @@ class SWIPE(GESTURE):
             self.motion = motion
 
         # Trigger action if motion is set and continuous actions are registered
-        if self.has_continuous and self.motion and monotonic() > self.uptime + OPTIONS["update_timer"]:
+        if self.has_continuous and self.motion and monotonic() > self.uptime + options.update_timer:
             if self.motion == "left":
                 self.action(self.motion, self.fingers, "continuous", (-rel_x, -total_x))
             elif self.motion == "right":
@@ -501,7 +533,7 @@ class SWIPE(GESTURE):
             self.uptime = monotonic()
             self.data[0], self.data[1] = 0, 0
 
-        if self.has_repeat and self.motion and monotonic() > self.reptime + OPTIONS["repeat_timer"]:
+        if self.has_repeat and self.motion and monotonic() > self.reptime + options.repeat_timer:
             self.action(self.motion, self.fingers, "repeat")
             self.reptime = monotonic()
 
@@ -530,10 +562,10 @@ class PINCH(GESTURE):
 
         # Determine rotation/zoom
         if not self.motion:
-            if abs(total_ratio) < OPTIONS["ratio_min_threshold"] and abs(total_angle) < OPTIONS["angle_min_threshold"]:
+            if abs(total_ratio) < options.ratio_min_threshold and abs(total_angle) < options.angle_min_threshold:
                 return True
 
-            if abs(total_angle) >= OPTIONS["angle_min_threshold"]:
+            if abs(total_angle) >= options.angle_min_threshold:
                 motion = 'clockwise' if angle > 0 else 'anticlockwise'
             else:
                 motion = 'in' if ratio < 0 else 'out'
@@ -541,7 +573,7 @@ class PINCH(GESTURE):
             self.motion = motion
 
         # Trigger action if motion is set and continuous actions are registered
-        if self.has_continuous and self.motion and monotonic() > self.uptime + OPTIONS["update_timer"]:
+        if self.has_continuous and self.motion and monotonic() > self.uptime + options.update_timer:
             if self.motion == "in":
                 self.action(self.motion, self.fingers, "continuous", (rel_ratio, total_ratio))
             elif self.motion == "out":
@@ -553,7 +585,7 @@ class PINCH(GESTURE):
             self.uptime = monotonic()
             self.data[0], self.data[1] = 0, 0
 
-        if self.has_repeat and self.motion and monotonic() > self.reptime + OPTIONS["repeat_timer"]:
+        if self.has_repeat and self.motion and monotonic() > self.reptime + options.repeat_timer:
             self.action(self.motion, self.fingers, "repeat")
             self.reptime = monotonic()
 
@@ -647,10 +679,10 @@ def touch_gesture(startPos, lastPos):
         ratio = 1
         angle = 0
 
-    if abs(angle) > OPTIONS["angle_min_threshold"]:
+    if abs(angle) > options.angle_min_threshold:
         return({'gesture': 'PINCH',
                 'params': [0, 0, 0, 0, ratio, angle]})
-    elif abs(math.log(ratio)) > OPTIONS["ratio_min_threshold"]:
+    elif abs(math.log(ratio)) > options.ratio_min_threshold:
         return({'gesture': 'PINCH',
                 'params': [0, 0, 0, 0, ratio, angle]})
     else:
