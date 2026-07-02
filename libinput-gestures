@@ -383,7 +383,7 @@ conf_gesture_re = re.compile(r"""
     \s*
     (?P<fingers> \d)                                                     # fingers
     \s*
-    (?P<modifier> continuous | repeat)?                                  # modifier
+    (?P<modifier> continuous | repeat | end)?                            # modifier
     \s*
     (?P<command> .*)                                                     # command
 """, flags = re.VERBOSE)
@@ -399,6 +399,8 @@ def conf_gesture(lineargs):
 
     gesture, motion, fingers, modifier, command = fields.groupdict().values()
     handler = handlers.get(gesture.upper())
+
+    modifier = modifier or 'end'
 
     if not handler:
         return f'Gesture "{gesture}" is not supported.\nMust be "{" or ".join([h.lower() for h in handlers])}"'
@@ -430,11 +432,10 @@ class GESTURE:
         if not command:
             return 'No command configured'
 
-        if modifier:
-            if modifier == "continuous":
-                self.has_continuous = True
-            elif modifier == "repeat":
-                self.has_repeat = True
+        if modifier == "continuous":
+            self.has_continuous = True
+        elif modifier == "repeat":
+            self.has_repeat = True
 
         try:
             self.actions[(motion, fingers, modifier)] = command
@@ -458,9 +459,9 @@ class GESTURE:
         if cancelled or not self.motion:
             return
 
-        self.action(self.motion, self.fingers)
+        self.action(self.motion, self.fingers, 'end')
 
-    def action(self, motion, fingers, modifier = None, continuous = None):
+    def action(self, motion, fingers, modifier, continuous = None):
         'Action a motion command for this gesture'
         command = self.actions.get((motion, fingers, modifier))
 
