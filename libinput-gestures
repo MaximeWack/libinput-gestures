@@ -34,7 +34,6 @@ class OPTIONS:
         angle_min_threshold = dict(default = 10   ,valid = float, help = "Minimum angle to register a rotation"),
         update_timer        = dict(default = .1   ,valid = float, help = "Time interval at which update a continuous motion"),
         repeat_timer        = dict(default = 1    ,valid = float, help = "Time interval at which trigger a repeating motion"),
-        timeout             = dict(default = 1.5  ,valid = float, help = "Maximum time after which a gesture is cancelled"),
         device              = dict(default = "all",valid = str, help = '"all", or device name, or device path'))
 
     # Create attributes from the dict and set default values
@@ -479,11 +478,6 @@ class GESTURE:
 
             if not continuous:
                 print('')
-
-        if options.timeout > 0 and (self.starttime + options.timeout) < monotonic():
-            if args.verbose:
-                print('  timeout - no action')
-            return
 
         if torun and not args.debug:
             run(shlex.split(torun))
