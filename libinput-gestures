@@ -300,7 +300,7 @@ def read_conf(conffile, defname):
         for h in handlers.values():
             for mpair, cmd in h.actions.items():
                 action, fingers, *modifiers = mpair
-                print(f'{h.name.lower()} {action:15}{fingers if fingers is not None else '':>2} {cmd} {modifiers}')
+                print(f'{h.name.lower()} {action:15}{fingers:>2} {cmd} {modifiers}')
 
         print('', 'OPTIONS:', sep = '\n')
         for option, params in options.available.items():
@@ -381,7 +381,7 @@ conf_gesture_re = re.compile(r"""
     \s*
     (?P<motion> up | down | left | right | in | out | (anti)? clockwise) # gesture motion
     \s*
-    (?P<fingers> \d)?                                                    # fingers
+    (?P<fingers> \d)                                                     # fingers
     \s*
     (?P<modifier> continuous | repeat)?                                  # modifier
     \s*
@@ -462,8 +462,7 @@ class GESTURE:
 
     def action(self, motion, fingers, modifier = None, continuous = None):
         'Action a motion command for this gesture'
-        # try full motion spec with finger count and fallback on no finger count specified
-        command = self.actions.get((motion, fingers, modifier)) or self.actions.get((motion, None, modifier))
+        command = self.actions.get((motion, fingers, modifier))
 
         torun = command
 
