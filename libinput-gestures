@@ -313,13 +313,18 @@ def read_conf(conffile, defname):
 
         print()
 
+conf_comment_re = re.compile(r"""
+    ^\# |                                  # Line starts with a comment
+    ^\[[^\[\]]+\]\s*                       # Line is a section header
+""", flags = re.VERBOSE)
+
 def get_conf(conffile, confname):
     'Read given configuration file and store internal actions etc'
     with conffile.open() as fp:
         for num, line in enumerate(fp, 1):
             line = line.strip().lower()
 
-            if not line or line[0] == '#':
+            if not line or conf_comment_re.match(line):
                 continue
 
             errmsg = get_conf_line(line)
