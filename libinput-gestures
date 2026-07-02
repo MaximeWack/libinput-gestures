@@ -446,7 +446,7 @@ class GESTURE:
     def begin(self, fingers):
         'Initialise this gesture at the start of motion'
         self.fingers = fingers
-        self.data = [0.0, 0.0, 0.0, 0.0]
+        self.data = dict(x = 0, y = 0, dx = 0, dy = 0, angle = 0, ratio = 0, dangle = 0, dratio = 0)
         self.starttime = monotonic()
         self.uptime = 0
         self.reptime = 0
@@ -460,23 +460,23 @@ class GESTURE:
 
         self.action(self.motion, self.fingers, 'end')
 
-    def action(self, motion, fingers, modifier, continuous = None):
+    def action(self, motion, fingers, modifier):
         'Action a motion command for this gesture'
         command = self.actions.get((motion, fingers, modifier))
 
         torun = command
 
-        if torun and continuous:
-            torun = torun.replace("{rel}", str(int(continuous[0])))
-            torun = torun.replace("{total}", str(int(continuous[1])))
+        if torun:
+            data = {k: int(v) for k, v in self.data.items()}
+            exprs = re.findall(r'\{[^\{\}]+\}', torun)
+            for expr in exprs:
+                torun = torun.replace(expr, str(eval(expr[1:-1], {}, data)))
 
-        if args.verbose and (torun or not continuous):
+        if args.verbose and torun:
             print(f'{PROGNAME}: {self.name} {motion} {fingers} {self.data}')
 
             if torun:
                 print('  ', torun)
-
-            if not continuous:
                 print('')
 
         if torun and not args.debug:
@@ -496,41 +496,32 @@ class SWIPE(GESTURE):
         except (ValueError, IndexError):
             return False
 
-        self.data[0] += x
-        self.data[1] += y
-        self.data[2] += x
-        self.data[3] += y
-
-        rel_x, rel_y, total_x, total_y = self.data
+        self.data["x"] += x
+        self.data["dx"] += x
+        self.data["y"] += y
+        self.data["dy"] += y
 
         # Determine swipe direction after swipe_min_threshold has been traveled
         if not self.motion:
-            total_dist = math.sqrt(total_x ** 2 + total_y ** 2)
+            total_dist = math.sqrt(self.data["x"] ** 2 + self.data["y"] ** 2)
 
             # Require absolute distance movement beyond a small threshold to determine motion
             if total_dist < options.swipe_min_threshold:
                 return True
 
             # Discriminate left/right or up/down.
-            if abs(total_x) > abs(total_y):
-                motion = 'left' if total_x < 0 else 'right'
+            if abs(self.data["x"]) > abs(self.data["y"]):
+                motion = 'left' if self.data["x"] < 0 else 'right'
             else:
-                motion = 'up' if total_y < 0 else 'down'
+                motion = 'up' if self.data["y"] < 0 else 'down'
 
             self.motion = motion
 
         # Trigger action if motion is set and continuous actions are registered
         if self.has_continuous and self.motion and monotonic() > self.uptime + options.update_timer:
-            if self.motion == "left":
-                self.action(self.motion, self.fingers, "continuous", (-rel_x, -total_x))
-            elif self.motion == "right":
-                self.action(self.motion, self.fingers, "continuous", (rel_x, total_x))
-            elif self.motion == "up":
-                self.action(self.motion, self.fingers, "continuous", (-rel_y, -total_y))
-            elif self.motion == "down":
-                self.action(self.motion, self.fingers, "continuous", (rel_y, total_y))
+            self.action(self.motion, self.fingers, "continuous")
             self.uptime = monotonic()
-            self.data[0], self.data[1] = 0, 0
+            self.data["dx"], self.data["dy"] = 0, 0
 
         if self.has_repeat and self.motion and monotonic() > self.reptime + options.repeat_timer:
             self.action(self.motion, self.fingers, "repeat")
@@ -552,37 +543,28 @@ class PINCH(GESTURE):
         except (ValueError, IndexError):
             return False
 
-        self.data[0] = ratio - self.data[0]
-        self.data[1] += angle
-        self.data[2] = ratio
-        self.data[3] += angle
-
-        rel_ratio, rel_angle, total_ratio, total_angle = self.data
+        self.data["dratio"] = ratio - self.data["dratio"]
+        self.data["dangle"] += angle
+        self.data["ratio"] = ratio
+        self.data["angle"] += angle
 
         # Determine rotation/zoom
         if not self.motion:
-            if abs(total_ratio) < options.ratio_min_threshold and abs(total_angle) < options.angle_min_threshold:
+            if abs(self.data["ratio"]) < options.ratio_min_threshold and abs(self.data["angle"]) < options.angle_min_threshold:
                 return True
 
-            if abs(total_angle) >= options.angle_min_threshold:
-                motion = 'clockwise' if angle > 0 else 'anticlockwise'
+            if abs(self.data["angle"]) >= options.angle_min_threshold:
+                motion = 'clockwise' if self.data["angle"] > 0 else 'anticlockwise'
             else:
-                motion = 'in' if ratio < 0 else 'out'
+                motion = 'in' if self.data["ratio"] < 0 else 'out'
 
             self.motion = motion
 
         # Trigger action if motion is set and continuous actions are registered
         if self.has_continuous and self.motion and monotonic() > self.uptime + options.update_timer:
-            if self.motion == "in":
-                self.action(self.motion, self.fingers, "continuous", (rel_ratio, total_ratio))
-            elif self.motion == "out":
-                self.action(self.motion, self.fingers, "continuous", (rel_ratio, total_ratio))
-            elif self.motion == "clockwise":
-                self.action(self.motion, self.fingers, "continuous", (rel_angle, total_angle))
-            elif self.motion == "anticlockwise":
-                self.action(self.motion, self.fingers, "continuous", (rel_angle, total_angle))
+            self.action(self.motion, self.fingers, "continuous")
             self.uptime = monotonic()
-            self.data[0], self.data[1] = 0, 0
+            self.data["dratio"], self.data["dangle"] = 0, 0
 
         if self.has_repeat and self.motion and monotonic() > self.reptime + options.repeat_timer:
             self.action(self.motion, self.fingers, "repeat")
