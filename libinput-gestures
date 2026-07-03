@@ -473,7 +473,7 @@ class GESTURE:
                 torun = torun.replace(expr, str(eval(expr[1:-1], {}, data)))
 
         if args.verbose and torun:
-            print(f'{PROGNAME}: {self.name} {motion} {fingers} {self.data}')
+            print(f'{PROGNAME}: {self.name} {motion} {fingers} {data}')
 
             if torun:
                 print('  ', torun)
