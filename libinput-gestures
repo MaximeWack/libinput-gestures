@@ -321,7 +321,7 @@ def get_conf(conffile, confname):
     'Read given configuration file and store internal actions etc'
     with conffile.open() as fp:
         for num, line in enumerate(fp, 1):
-            line = line.strip().lower()
+            line = line.strip()
 
             if not line or conf_comment_re.match(line):
                 continue
