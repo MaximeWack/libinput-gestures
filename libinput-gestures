@@ -513,11 +513,9 @@ class SWIPE(GESTURE):
 
             # Discriminate left/right or up/down.
             if abs(self.data["x"]) > abs(self.data["y"]):
-                motion = 'left' if self.data["x"] < 0 else 'right'
+                self.motion = 'left' if self.data["x"] < 0 else 'right'
             else:
-                motion = 'up' if self.data["y"] < 0 else 'down'
-
-            self.motion = motion
+                self.motion = 'up' if self.data["y"] < 0 else 'down'
 
         # Trigger action if motion is set and continuous actions are registered
         if self.has_continuous and self.motion and time - self.uptime > options.update_timer:
@@ -555,11 +553,9 @@ class PINCH(GESTURE):
                 return True
 
             if abs(self.data["angle"]) >= options.angle_min_threshold:
-                motion = 'clockwise' if self.data["angle"] > 0 else 'anticlockwise'
+                self.motion = 'clockwise' if self.data["angle"] > 0 else 'anticlockwise'
             else:
-                motion = 'in' if self.data["ratio"] < 0 else 'out'
-
-            self.motion = motion
+                self.motion = 'in' if self.data["ratio"] < 0 else 'out'
 
         # Trigger action if motion is set and continuous actions are registered
         if self.has_continuous and self.motion and time - self.uptime > options.update_timer:
