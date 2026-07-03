@@ -12,7 +12,6 @@ import fcntl
 import platform
 import math
 import signal
-from time import monotonic
 from pathlib import Path
 from packaging.version import Version
 
@@ -32,8 +31,10 @@ class OPTIONS:
         swipe_min_threshold = dict(default = 5    ,valid = float, help = "Minimum travel distance to register a swipe"),
         ratio_min_threshold = dict(default = .2   ,valid = float, help = "Minimum ratio to register a pinch"),
         angle_min_threshold = dict(default = 10   ,valid = float, help = "Minimum angle to register a rotation"),
+        swipe_step_threshold = dict(default = 100 ,valid = float, help = "Minimum travel distance to register a swipe"),
+        ratio_step_threshold = dict(default = .4  ,valid = float, help = "Minimum ratio to register a pinch"),
+        angle_step_threshold = dict(default = 100 ,valid = float, help = "Minimum angle to register a rotation"),
         update_timer        = dict(default = .1   ,valid = float, help = "Time interval at which update a continuous motion"),
-        repeat_timer        = dict(default = 1    ,valid = float, help = "Time interval at which trigger a repeating motion"),
         device              = dict(default = "all",valid = str, help = '"all", or device name, or device path'))
 
     # Create attributes from the dict and set default values
@@ -382,7 +383,7 @@ conf_gesture_re = re.compile(r"""
     \s*
     (?P<fingers> \d)                                                     # fingers
     \s*
-    (?P<modifier> continuous | repeat | end)?                            # modifier
+    (?P<modifier> continuous | step | end)?                              # modifier
     \s*
     (?P<command> .*)                                                     # command
 """, flags = re.VERBOSE)
@@ -421,7 +422,7 @@ class GESTURE:
         self.name = type(self).__name__
         self.actions = {}
         self.has_continuous = False
-        self.has_repeat = False
+        self.has_step = False
 
     def add(self, motion, fingers, modifier, command):
         'Add a configured motion command for this gesture'
@@ -433,8 +434,8 @@ class GESTURE:
 
         if modifier == "continuous":
             self.has_continuous = True
-        elif modifier == "repeat":
-            self.has_repeat = True
+        elif modifier == "step":
+            self.has_step = True
 
         try:
             self.actions[(motion, fingers, modifier)] = command
@@ -443,14 +444,13 @@ class GESTURE:
 
         return None
 
-    def begin(self, fingers):
+    def begin(self, fingers, time, threshold):
         'Initialise this gesture at the start of motion'
         self.fingers = fingers
         self.data = dict(x = 0, y = 0, dx = 0, dy = 0, angle = 0, ratio = 0, dangle = 0, dratio = 0)
-        self.starttime = monotonic()
-        self.uptime = 0
-        self.reptime = 0
+        self.uptime = time
         self.motion = None
+        self.threshold = threshold
 
     def end(self, cancelled = False):
         'Action this gesture at the end of a motion sequence'
@@ -482,12 +482,14 @@ class GESTURE:
         if torun and not args.debug:
             run(shlex.split(torun))
 
+        return True if torun else False
+
 @add_gesture_handler
 class SWIPE(GESTURE):
     'Class to handle this type of gesture'
     SUPPORTED_MOTIONS = ('left', 'right', 'up', 'down')
 
-    def update(self, coords):
+    def update(self, coords, time):
         'Update this gesture for a motion'
         # Ignore this update if we can not parse the numbers we expect
         try:
@@ -506,7 +508,7 @@ class SWIPE(GESTURE):
             total_dist = math.sqrt(self.data["x"] ** 2 + self.data["y"] ** 2)
 
             # Require absolute distance movement beyond a small threshold to determine motion
-            if total_dist < options.swipe_min_threshold:
+            if total_dist < self.threshold:
                 return True
 
             # Discriminate left/right or up/down.
@@ -518,14 +520,13 @@ class SWIPE(GESTURE):
             self.motion = motion
 
         # Trigger action if motion is set and continuous actions are registered
-        if self.has_continuous and self.motion and monotonic() > self.uptime + options.update_timer:
+        if self.has_continuous and self.motion and time - self.uptime > options.update_timer:
             self.action(self.motion, self.fingers, "continuous")
-            self.uptime = monotonic()
+            self.uptime = time
             self.data["dx"], self.data["dy"] = 0, 0
 
-        if self.has_repeat and self.motion and monotonic() > self.reptime + options.repeat_timer:
-            self.action(self.motion, self.fingers, "repeat")
-            self.reptime = monotonic()
+        if self.has_step and self.motion and self.action(self.motion, self.fingers, "step"):
+            self.begin(self.fingers, time, options.swipe_step_threshold)
 
         return True
 
@@ -534,7 +535,7 @@ class PINCH(GESTURE):
     'Class to handle this type of gesture'
     SUPPORTED_MOTIONS = ('in', 'out', 'clockwise', 'anticlockwise')
 
-    def update(self, coords):
+    def update(self, coords, time):
         'Update this gesture for a motion'
         # Ignore this update if we can not parse the numbers we expect
         try:
@@ -561,14 +562,13 @@ class PINCH(GESTURE):
             self.motion = motion
 
         # Trigger action if motion is set and continuous actions are registered
-        if self.has_continuous and self.motion and monotonic() > self.uptime + options.update_timer:
+        if self.has_continuous and self.motion and time - self.uptime > options.update_timer:
             self.action(self.motion, self.fingers, "continuous")
-            self.uptime = monotonic()
+            self.uptime = time
             self.data["dratio"], self.data["dangle"] = 0, 0
 
-        if self.has_repeat and self.motion and monotonic() > self.reptime + options.repeat_timer:
-            self.action(self.motion, self.fingers, "repeat")
-            self.reptime = monotonic()
+        if self.has_step and self.motion and self.action(self.motion, self.fingers, "step"):
+            self.begin(self.fingers, time, None)
 
         return True
 
@@ -762,6 +762,7 @@ def main():
                 return
 
             event, time, params = fields.groupdict().values()
+            time = float(time)
 
             if ready:
                 # skip FRAME event and return
@@ -802,8 +803,8 @@ def main():
                     handler = handlers.get(gesture)
 
                     if handler:
-                        handler.begin(str(nfingers))
-                        handler.update(params)
+                        handler.begin(str(nfingers), time, options.swipe_min_threshold)
+                        handler.update(params, time)
                         handler.end()
                         handler = None
                     else:
@@ -844,19 +845,20 @@ def main():
                 return
 
             gesture, event, time, fingers, params = fields.groupdict().values()
+            time = float(time)
 
             # Action each type of event
             if event == 'BEGIN':
                 handler = handlers.get(gesture)
 
                 if handler:
-                    handler.begin(fingers)
+                    handler.begin(fingers, time, options.swipe_min_threshold)
                 else:
                     print(f'Unknown gesture received: {gesture}.', file = sys.stderr)
 
             elif event == 'UPDATE':
                 if handler:
-                    if not handler.update(re.split(r'[^-.\d]+', params)):
+                    if not handler.update(re.split(r'[^-.\d]+', params), time):
                         print(f'Could not parse {gesture} {event}: {params}', file = sys.stderr)
 
             elif event == 'END':
