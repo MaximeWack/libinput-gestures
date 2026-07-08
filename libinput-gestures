@@ -42,6 +42,7 @@ class OPTIONS:
         for opt, params in self.available.items():
             setattr(self, opt, params["default"])
 
+    # Set an option value (arg > conf > default)
     def set(self, option, value):
         arg = getattr(args, option)
         valid = self.available[option]["valid"]
@@ -60,6 +61,7 @@ class OPTIONS:
             except:
                 return f'Option {option} must be of type {valid.__name__}'
 
+    # Ensure single instance
     instance = None
 
     def __new__(cls):
