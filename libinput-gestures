@@ -457,10 +457,16 @@ class GESTURE:
     def end(self, cancelled = False):
         'Action this gesture at the end of a motion sequence'
 
-        if cancelled or not self.motion:
+        # If no motion has been detected, return
+        if not self.motion:
             return
 
-        self.action(self.motion, self.fingers, 'end')
+        # Execute end only if the motion wasn't cancelled
+        if not cancelled:
+            self.action(self.motion, self.fingers, 'end')
+
+        # In any case, execute post
+        self.action(self.motion, self.fingers, 'post')
 
     def action(self, motion, fingers, modifier):
         'Action a motion command for this gesture'
@@ -519,14 +525,19 @@ class SWIPE(GESTURE):
             else:
                 self.motion = 'up' if self.data["y"] < 0 else 'down'
 
+        # Trigger pre motion
+        if self.motion:
+            self.action(self.motion, self.fingers, 'pre')
+
+        # Trigger chain action and reset the gesture
+        if self.has_chain and self.motion and self.action(self.motion, self.fingers, 'chain'):
+            self.begin(self.fingers, time, options.swipe_chain_threshold)
+
         # Trigger action if motion is set and continuous actions are registered
         if self.has_continuous and self.motion and time - self.uptime > options.update_timer:
             self.action(self.motion, self.fingers, "continuous")
             self.uptime = time
             self.data["dx"], self.data["dy"] = 0, 0
-
-        if self.has_chain and self.motion and self.action(self.motion, self.fingers, "chain"):
-            self.begin(self.fingers, time, options.swipe_chain_threshold)
 
         return True
 
@@ -559,14 +570,19 @@ class PINCH(GESTURE):
             else:
                 self.motion = 'in' if self.data["ratio"] < 0 else 'out'
 
+        # Trigger pre motion
+        if self.motion:
+            self.action(self.motion, self.fingers, 'pre')
+
+        # Trigger chain action and reset the gesture
+        if self.has_chain and self.motion and self.action(self.motion, self.fingers, "chain"):
+            self.begin(self.fingers, time, None)
+
         # Trigger action if motion is set and continuous actions are registered
         if self.has_continuous and self.motion and time - self.uptime > options.update_timer:
             self.action(self.motion, self.fingers, "continuous")
             self.uptime = time
             self.data["dratio"], self.data["dangle"] = 0, 0
-
-        if self.has_chain and self.motion and self.action(self.motion, self.fingers, "chain"):
-            self.begin(self.fingers, time, None)
 
         return True
 
