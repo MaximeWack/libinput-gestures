@@ -114,7 +114,7 @@ class ACTIONS:
            self.conf_re[action] = re.compile(rf"""\s*""".join(verbs))
 
     # Parse a conf line with the action regexes
-    def parse(self, action, args):
+    def parse(self, action, restrict, args):
         fields = self.conf_re[action].match(args)
 
         if not fields:
@@ -122,83 +122,44 @@ class ACTIONS:
 
         fields = fields.groupdict()
 
-        match action:
-            case 'switch':
-                self.add_switch(**fields)
-            case 'hold':
-                self.add_hold(**fields)
-            case _:
-                self.add_gesture(action = action, **fields)
-
-    def add_hold(self, fingers, command, modifier, wclass):
-        fingers = int(fingers)
-
-        if not modifier:
-            modifier = 'end'
-
-        if wclass:
-            wclass = wclass[1:-1]
-
-        if not self.actions.get('gesture'):
-            self.actions['gesture'] = [None for _ in range(11)]
-
-        if not self.actions['gesture'][fingers]:
-            self.actions['gesture'][fingers] = {}
-
-        if not self.actions['gesture'][fingers].get('hold'):
-            self.actions['gesture'][fingers]['hold'] = {}
-
-        if not self.actions['gesture'][fingers]['hold'].get(None):
-            self.actions['gesture'][fingers]['hold'][None] = {}
-
-        if not self.actions['gesture'][fingers]['hold'][None].get(wclass):
-            self.actions['gesture'][fingers]['hold'][None][wclass] = {}
-
-        self.actions['gesture'][fingers]['hold'][None][wclass][modifier] = command
-
-    def add_gesture(self, action, motion, fingers, command, modifier, wclass):
-        fingers = int(fingers)
-
-        modifier = modifier or 'end'
-
-        wclass = wclass and wclass[1:-1]
-
-        if not self.actions.get('gesture'):
-            self.actions['gesture'] = [None for _ in range(11)]
-
-        if not self.actions['gesture'][fingers]:
-            self.actions['gesture'][fingers] = {}
-
-        if not self.actions['gesture'][fingers].get(action):
-            self.actions['gesture'][fingers][action] = {}
-
-        if not self.actions['gesture'][fingers][action].get('apps'):
-            self.actions['gesture'][fingers][action]['apps'] = set()
-
-        self.actions['gesture'][fingers][action]['apps'].add(wclass)
-
-        if not self.actions['gesture'][fingers][action].get(motion):
-            self.actions['gesture'][fingers][action][motion] = {}
-
-        if not self.actions['gesture'][fingers][action][motion].get(wclass):
-            self.actions['gesture'][fingers][action][motion][wclass] = {}
-
-        self.actions['gesture'][fingers][action][motion][wclass][modifier] = command
+        if action == 'switch':
+            self.add_switch(**fields)
+        else:
+            self.add(restrict, action, **fields)
 
     def add_switch(self, toggle, state, command):
-        if not self.actions.get('switch'):
-            self.actions['switch'] = {}
+        self.build_path('switch', toggle, state, command = command)
 
-        if not self.actions['switch'].get(toggle):
-            self.actions['switch'][toggle] = {}
+    def add(self, restrict, action, fingers, wclass, modifier, command, motion = None):
+        fingers = int(fingers)
+        modifier = modifier or 'end'
+        wclass = wclass and wclass[1:-1]
 
-        self.actions['switch'][toggle][state] = command
+        restrict = [restrict] if restrict else ['touch', 'gesture']
+
+        for r in restrict:
+            self.build_path(r, fingers, action, motion, wclass, modifier, command = command)
+
+            if not self.actions[r][fingers][action].get('apps'):
+                self.actions[r][fingers][action]['apps'] = set()
+
+            self.actions[r][fingers][action]['apps'].add(wclass)
+
+    def build_path(self, *args, command):
+        current = self.actions
+
+        for arg in args[:-1]:
+            if not current.get(arg):
+                current[arg] = {}
+            current = current[arg]
+
+        current[args[-1]] = command
 
     # def get_feature(self, feature):
     #     feature in list(self.actions)
 
     # def get_fingers(self, feature, fingers):
-    #     self.actions[feature][fingers]
+    #     fingers in list(self.actions[feature])
 
     def get_gestures(self, fingers, wclass):
         return {k for k, v in self.actions['gesture'][fingers].items() if (wclass in v['apps'] or None in v['apps'])}
@@ -494,10 +455,16 @@ def get_conf_line(line):
     'Process a single line in conf file'
     key, *argslist = line.split(maxsplit = 1)
 
+    restrict = None
+
+    if key == 'touch' or key == 'gesture':
+        restrict = key
+        key, *argslist = argslist[0].split(maxsplit = 1)
+
     if key in list(options.available):
         return options.set(key, argslist[0])
     elif key in list(actions.available):
-        actions.parse(key, argslist[0])
+        actions.parse(key, restrict, argslist[0])
     else:
         conf_func = conf_commands.get(key)
 
