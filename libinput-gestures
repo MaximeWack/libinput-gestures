@@ -421,6 +421,12 @@ def read_conf(conffile, defname):
                 action, fingers, *modifiers = mpair
                 print(f'{h.name.lower()} {action:15}{fingers:>2} {cmd} {modifiers}')
 
+        if actions.actions:
+            print(actions)
+            print(actions.get_available_gestures(4, 'other'))
+            print(actions.get_available_motions(4, 'pinch', 'other'))
+            print(actions.get_available_actions(4, 'pinch', 'out', 'other'))
+
         print('', 'OPTIONS:', sep = '\n')
         for option, params in options.available.items():
             value = getattr(options, option)
@@ -450,12 +456,6 @@ def get_conf(conffile, confname):
 
             if errmsg:
                 sys.exit(f'Error at line {num} in file {confname}:\n>> {line} <<\n{errmsg}.')
-
-    if actions.actions:
-        # print(actions.actions)
-        print(actions.get_gestures(4, 'other'))
-        print(actions.get_motions(4, 'pinch', 'other'))
-        print(actions.get_actions(4, 'pinch', 'in', 'other'))
 
 def get_conf_line(line):
     'Process a single line in conf file'
