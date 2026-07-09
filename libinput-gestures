@@ -114,7 +114,7 @@ class ACTIONS:
            self.conf_re[action] = re.compile(rf"""\s*""".join(verbs))
 
     # Parse a conf line with the action regexes
-    def parse(self, action, restrict, args):
+    def parse(self, restrict, action, args):
         fields = self.conf_re[action].match(args)
 
         if not fields:
@@ -464,7 +464,7 @@ def get_conf_line(line):
     if key in list(options.available):
         return options.set(key, argslist[0])
     elif key in list(actions.available):
-        actions.parse(key, restrict, argslist[0])
+        actions.parse(restrict, key, argslist[0])
     else:
         conf_func = conf_commands.get(key)
 
