@@ -155,19 +155,19 @@ class ACTIONS:
 
         current[args[-1]] = command
 
-    # def get_feature(self, feature):
+    # def get_available_feature(self, feature):
     #     feature in list(self.actions)
 
-    # def get_fingers(self, feature, fingers):
+    # def get_available_fingers(self, feature, fingers):
     #     fingers in list(self.actions[feature])
 
-    def get_gestures(self, fingers, wclass):
+    def get_available_gestures(self, fingers, wclass):
         return {k for k, v in self.actions['gesture'][fingers].items() if (wclass in v['apps'] or None in v['apps'])}
 
-    def get_motions(self, fingers, gesture, wclass):
+    def get_available_motions(self, fingers, gesture, wclass):
         return {k for k, v in self.actions['gesture'][fingers][gesture].items() if ((wclass in list(v) or None in list(v)) and k != 'apps')}
 
-    def get_actions(self, fingers, gesture, motion, wclass):
+    def get_available_actions(self, fingers, gesture, motion, wclass):
         if wclass in list(self.actions['gesture'][fingers][gesture][motion]):
             return self.actions['gesture'][fingers][gesture][motion][wclass]
         else:
