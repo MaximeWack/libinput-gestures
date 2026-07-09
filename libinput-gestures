@@ -426,9 +426,9 @@ def read_conf(conffile, defname):
             value = getattr(options, option)
             default = params["default"]
             if value != default:
-                print(f'{option:20} {value:>5} ({default=})')
+                print(f'{option:24} {value:>5} ({default=})')
             else:
-                print(f'{option:20} {value:>5}')
+                print(f'{option:24} {value:>5}')
 
         print()
 
