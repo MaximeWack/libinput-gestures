@@ -100,6 +100,7 @@ class ACTIONS:
 
     conf_re = {}
     actions = {}
+    parsed_actions = []
 
     # Build parsing regexes from dict
     def __init__(self):
@@ -119,6 +120,8 @@ class ACTIONS:
 
         if not fields:
             return f'Could not parse {action} line'
+
+        self.parsed_actions.append(((restrict or '') + ' ' + action +  ' ' + args).strip())
 
         fields = fields.groupdict()
 
@@ -172,6 +175,9 @@ class ACTIONS:
             return self.actions['gesture'][fingers][gesture][motion][wclass]
         else:
             return self.actions['gesture'][fingers][gesture][motion][None]
+
+    def __str__(self):
+        return '\n'.join(sorted(self.parsed_actions))
 
     # Ensure single instance
     instance = None
