@@ -72,6 +72,156 @@ class OPTIONS:
 # Create the singleton options object
 options = OPTIONS()
 
+class ACTIONS:
+    available = dict(
+        switch = {'toggle'   : ('tablet-mode', 'lid', 'keypad-slide'),
+                  'state'    : ('on', 'off'),
+                  'command'  : '.*'},
+        swipe =  {'motion'   : ('up', 'down', 'left', 'right'),
+                  'fingers' : r'\d',
+                  'modifier?': ('pre', 'chain', 'continuous', 'end', 'post'),
+                  'command'  : r'[^\[\]]+',
+                  'wclass?'   : r'\[.*\]'},
+        pinch =  {'motion'   : ('in', 'out'),
+                  'fingers' : r'\d',
+                  'modifier?': ('pre', 'chain', 'continuous', 'end', 'post'),
+                  'command'  : r'[^\[\]]+',
+                  'wclass?'   : r'\[.*\]'},
+        rotate = {'motion'   : ('clockwise', 'anticlockwise'),
+                  'fingers' : r'\d',
+                  'modifier?': ('pre', 'chain', 'continuous', 'end', 'post'),
+                  'command'  : r'[^\[\]]+',
+                  'wclass?'   : r'\[.*\]'},
+        hold =   {'fingers' : r'\d',
+                  'modifier?': ('pre', 'end'),
+                  'command'  : r'[^\[\]]+',
+                  'wclass?'   : r'\[.*\]'}
+    )
+
+    conf_re = {}
+    actions = {}
+
+    # Build parsing regexes from dict
+    def __init__(self):
+       for action, params in self.available.items():
+           verbs = []
+           for verb, arg in params.items():
+               arg = '|'.join(arg) if type(arg).__name__ != "str" else arg
+               if verb[-1] == "?":
+                   verbs.append(rf"""(?P<{verb[:-1]}>{arg})?""")
+               else:
+                   verbs.append(rf"""(?P<{verb}>{arg})""")
+           self.conf_re[action] = re.compile(rf"""\s*""".join(verbs))
+
+    # Parse a conf line with the action regexes
+    def parse(self, action, args):
+        fields = self.conf_re[action].match(args)
+
+        if not fields:
+            return f'Could not parse {action} line'
+
+        fields = fields.groupdict()
+
+        match action:
+            case 'switch':
+                self.add_switch(**fields)
+            case 'hold':
+                self.add_hold(**fields)
+            case _:
+                self.add_gesture(action = action, **fields)
+
+    def add_hold(self, fingers, command, modifier, wclass):
+        fingers = int(fingers)
+
+        if not modifier:
+            modifier = 'end'
+
+        if wclass:
+            wclass = wclass[1:-1]
+
+        if not self.actions.get('gesture'):
+            self.actions['gesture'] = [None for _ in range(11)]
+
+        if not self.actions['gesture'][fingers]:
+            self.actions['gesture'][fingers] = {}
+
+        if not self.actions['gesture'][fingers].get('hold'):
+            self.actions['gesture'][fingers]['hold'] = {}
+
+        if not self.actions['gesture'][fingers]['hold'].get(None):
+            self.actions['gesture'][fingers]['hold'][None] = {}
+
+        if not self.actions['gesture'][fingers]['hold'][None].get(wclass):
+            self.actions['gesture'][fingers]['hold'][None][wclass] = {}
+
+        self.actions['gesture'][fingers]['hold'][None][wclass][modifier] = command
+
+    def add_gesture(self, action, motion, fingers, command, modifier, wclass):
+        fingers = int(fingers)
+
+        modifier = modifier or 'end'
+
+        wclass = wclass and wclass[1:-1]
+
+        if not self.actions.get('gesture'):
+            self.actions['gesture'] = [None for _ in range(11)]
+
+        if not self.actions['gesture'][fingers]:
+            self.actions['gesture'][fingers] = {}
+
+        if not self.actions['gesture'][fingers].get(action):
+            self.actions['gesture'][fingers][action] = {}
+
+        if not self.actions['gesture'][fingers][action].get('apps'):
+            self.actions['gesture'][fingers][action]['apps'] = set()
+
+        self.actions['gesture'][fingers][action]['apps'].add(wclass)
+
+        if not self.actions['gesture'][fingers][action].get(motion):
+            self.actions['gesture'][fingers][action][motion] = {}
+
+        if not self.actions['gesture'][fingers][action][motion].get(wclass):
+            self.actions['gesture'][fingers][action][motion][wclass] = {}
+
+        self.actions['gesture'][fingers][action][motion][wclass][modifier] = command
+
+    def add_switch(self, toggle, state, command):
+        if not self.actions.get('switch'):
+            self.actions['switch'] = {}
+
+        if not self.actions['switch'].get(toggle):
+            self.actions['switch'][toggle] = {}
+
+        self.actions['switch'][toggle][state] = command
+
+    # def get_feature(self, feature):
+    #     feature in list(self.actions)
+
+    # def get_fingers(self, feature, fingers):
+    #     self.actions[feature][fingers]
+
+    def get_gestures(self, fingers, wclass):
+        return {k for k, v in self.actions['gesture'][fingers].items() if (wclass in v['apps'] or None in v['apps'])}
+
+    def get_motions(self, fingers, gesture, wclass):
+        return {k for k, v in self.actions['gesture'][fingers][gesture].items() if ((wclass in list(v) or None in list(v)) and k != 'apps')}
+
+    def get_actions(self, fingers, gesture, motion, wclass):
+        if wclass in list(self.actions['gesture'][fingers][gesture][motion]):
+            return self.actions['gesture'][fingers][gesture][motion][wclass]
+        else:
+            return self.actions['gesture'][fingers][gesture][motion][None]
+
+    # Ensure single instance
+    instance = None
+
+    def __new__(cls):
+        if cls.instance is None:
+            cls.instance = super().__new__(cls)
+            return cls.instance
+
+actions = ACTIONS()
+
 args = None
 
 def open_lock(*args):
@@ -334,12 +484,20 @@ def get_conf(conffile, confname):
             if errmsg:
                 sys.exit(f'Error at line {num} in file {confname}:\n>> {line} <<\n{errmsg}.')
 
+    if actions.actions:
+        # print(actions.actions)
+        print(actions.get_gestures(4, 'other'))
+        print(actions.get_motions(4, 'pinch', 'other'))
+        print(actions.get_actions(4, 'pinch', 'in', 'other'))
+
 def get_conf_line(line):
     'Process a single line in conf file'
     key, *argslist = line.split(maxsplit = 1)
 
     if key in list(options.available):
         return options.set(key, argslist[0])
+    elif key in list(actions.available):
+        actions.parse(key, argslist[0])
     else:
         conf_func = conf_commands.get(key)
 
