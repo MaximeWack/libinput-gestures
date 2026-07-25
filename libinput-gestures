@@ -204,30 +204,14 @@ def open_lock(*args):
 
     return fp
 
-def run(cmd, *, check = True, block = False):
+def run(cmd):
     'Run function and return standard output, Popen() handle, or None'
     try:
-        if block:
-            result = subprocess.check_output(cmd,
-                                             universal_newlines = True,
-                                             stderr = (None if check else subprocess.DEVNULL))
-        else:
-            result = subprocess.Popen(cmd)
+        subprocess.Popen(cmd)
     except Exception as e:
-        result = None
-        if check:
-            print(str(e), file = sys.stderr)
+        print(str(e), file = sys.stderr)
 
-    return result
-
-def get_libinput_vers():
-    'Return the libinput installed version number string'
-    # Try to use newer libinput interface then fall back to old (depreciated) interface.
-    res = run(('libinput', '--version'), check = False, block = True)
-
-    return res.strip() if res else run(('libinput-list-devices', '--version'), check = False, block = True)
-
-def listen_libinput(device):
+def listen_libinput():
     # Make sure only one instance running for current user
     user = getpass.getuser()
     proglock = open_lock(PROGNAME, user)
@@ -236,8 +220,7 @@ def listen_libinput(device):
 
     # User needs to belong to the input group to access the device
     # "sudo gpasswd -a $USER input" then log out/in
-    devstr = f' --device {device.get("_path")}' if device else ''
-    command = f'stdbuf -oL -- libinput debug-events {devstr}'
+    command = f'stdbuf -oL -- libinput debug-events'
 
     cmd = subprocess.Popen(shlex.split(command),
                            stdout = subprocess.PIPE,
