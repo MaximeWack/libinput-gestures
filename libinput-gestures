@@ -500,9 +500,6 @@ class HANDLER:
         del(handler[self.device])
         return {'verbose': f'Removing device  {self.name:50} ({self.device})'}
 
-    def disable(self):
-        self.enabled = False
-
     def grab(self, device_type, time = None):
         'Grab a handler and set its current device type, the focused window class, and the starting time'
         self.busy = True
