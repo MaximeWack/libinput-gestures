@@ -121,8 +121,6 @@ class ACTIONS:
         if not fields:
             return f'Could not parse {action} line'
 
-        self.parsed_actions.append(((restrict or '') + ' ' + action +  ' ' + args).strip())
-
         fields = fields.groupdict()
 
         if action == 'switch':
@@ -131,13 +129,16 @@ class ACTIONS:
             self.add(restrict, action, **fields)
 
     def add_switch(self, toggle, state, command):
+        self.parsed_actions.append(f'switch {toggle:12} {state:3} {command}')
         self.build_path('switch', toggle, state, command = command)
 
     def add(self, restrict, action, fingers, wclass, modifier, command, motion = None):
         fingers = int(fingers)
         modifier = modifier or 'end'
-        wclass = wclass and wclass[1:-1]
 
+        self.parsed_actions.append(f'{restrict or '':7} {action:6} {fingers} {motion:5} {modifier:10} {command:60} {wclass or '':>}')
+
+        wclass = wclass and wclass[1:-1]
         restrict = [restrict] if restrict else ['touch', 'gesture']
 
         for r in restrict:
