@@ -548,7 +548,7 @@ class HANDLER:
             command = command.replace(expr, str(eval(expr[1:-1], {}, data)))
 
         if args.verbose:
-            print(f'{PROGNAME}: {self.path} {data}')
+            print(f'{self.path} {data}')
             print('  ', command)
             print('')
 
