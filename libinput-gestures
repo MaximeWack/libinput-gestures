@@ -147,6 +147,7 @@ class ACTIONS:
             self.actions[r][fingers][action]['apps'].add(wclass)
 
     def build_path(self, *args, command):
+        'Construct the actions dict object up to the given path'
         current = self.actions
 
         for arg in args[:-1]:
@@ -156,23 +157,15 @@ class ACTIONS:
 
         current[args[-1]] = command
 
-    # def get_available_feature(self, feature):
-    #     feature in list(self.actions)
+    def validate_path(self, path):
+        'Return the first path item not matching, or the resulting action path'
+        current = self.actions
+        for item in path:
+           current = current.get(item)
+           if not current:
+               return (False, item)
 
-    # def get_available_fingers(self, feature, fingers):
-    #     fingers in list(self.actions[feature])
-
-    def get_available_gestures(self, fingers, wclass):
-        return {k for k, v in self.actions['gesture'][fingers].items() if (wclass in v['apps'] or None in v['apps'])}
-
-    def get_available_motions(self, fingers, gesture, wclass):
-        return {k for k, v in self.actions['gesture'][fingers][gesture].items() if ((wclass in list(v) or None in list(v)) and k != 'apps')}
-
-    def get_available_actions(self, fingers, gesture, motion, wclass):
-        if wclass in list(self.actions['gesture'][fingers][gesture][motion]):
-            return self.actions['gesture'][fingers][gesture][motion][wclass]
-        else:
-            return self.actions['gesture'][fingers][gesture][motion][None]
+        return (True, current)
 
     def __str__(self):
         return '\n'.join(sorted(self.parsed_actions))
@@ -243,6 +236,10 @@ def get_options():
                      '--debug',
                      action = 'store_true',
                      help = 'output diagnostic messages only, do not action gestures')
+    opt.add_argument('-r',
+                     '--raw',
+                     action = 'store_true',
+                     help = 'output raw libinput output')
     for option, params in options.available.items():
         opt.add_argument('--' + option,
                          help = params["help"])
@@ -396,201 +393,494 @@ def touch_gesture(startPos, lastPos):
         return({'gesture': 'SWIPE',
                 'params': [0, 0, xrel, yrel]})
 
-touch_event_re = re.compile(r"""
-    .*?event\d+ \s+ TOUCH_                 # Prefix
-    (?P<event> UP | DOWN | FRAME | MOTION) # Event
-    \s*
-    (?:\d+)?                               # Event number within frame
-    \s*
-    \+ (?P<time> \d+\.\d+) s               # Time
-    \s*
-    (?P<params> .*)?                       # Params
-""", flags = re.VERBOSE)
+params_re = dict(
+    LIBINPUT = re.compile(r"""
+        .*?
+        (?P<device> event\d+)                  # Device
+        \s*
+        (?P<event> [A-Z_]+)                    # Event
+        \s*
+        (?:\d+)?                               # Event number within frame
+        \s*
+        (\+ (?P<time> \d+\.\d+) s)?            # Time
+        \s*
+        (?P<params> .*)?                       # Params
+    """, flags = re.VERBOSE),
 
-touch_params_re = re.compile(r"""
-    (?P<finger> \d)                        # Finger
-    \s*
-    \( (?P=finger) \)
-    \s*
-    (?P<x> \d+\.\d+) /\s* (?P<y> \d+\.\d+) # Absolute position 0-100% of width/height
-""", flags = re.VERBOSE)
+    DEVICE = re.compile(r"""
+        (?P<name>.*?)
+        \s*
+        (?P<seat>seat\d \s default)
+        \s*
+        (?P<group>group\d+)
+        \s*
+        (cap:(?P<capabilities>[kpgStT]+))
+        \s*
+        (size \s (?P<sizex>\d+) x (?P<sizey>\d+) mm)?
+    """, flags = re.VERBOSE),
 
-switch_event_re = re.compile(r"""
-    .*?event\d+ \s+ SWITCH_TOGGLE                            # Prefix
-    \s*
-    \+ (?P<time> \d+\.\d+) s                                 # Time
-    \s*
-    switch \s+ (?P<switch> tablet-mode | lid | keypad-slide) # Switch name
-    \s*
-    state \s+ (?P<state> 0 | 1)                              # State
-""", flags = re.VERBOSE)
+    SWITCH = re.compile(r"""
+        switch
+        \s+
+        (?P<switch> tablet-mode | lid | keypad-slide) # Switch name
+        \s*
+        state \s+ (?P<state> 0 | 1)                   # State
+    """, flags = re.VERBOSE),
 
-gesture_event_re = re.compile(r"""
-    .*?event\d+ \s+ GESTURE_           # Prefix
-    (?P<gesture> SWIPE | PINCH | HOLD) # Gesture
-    _
-    (?P<event> BEGIN | UPDATE | END)   # Event
-    \s*
-    (?: \d+)?                          # Update frame number
-    \s*
-    \+ (?P<time> \d+\.\d+) s           # Time
-    \s*
-    (?P<fingers> \d)                   # Fingers
-    \s*
-    (?P<params> .*)?                   # Params
-""", flags = re.VERBOSE)
+    TOUCH = re.compile(r"""
+        (?P<finger> \d)?                          # Finger
+        \s*
+        \( (?P=finger) \)?
+        \s*
+        ((?P<x> \d+\.\d+) /\s* (?P<y> \d+\.\d+))? # Absolute position 0-100% of width/height
+    """, flags = re.VERBOSE),
+
+    GESTURE = re.compile(r"""
+        (?P<fingers> \d)                                                                    # Fingers
+        \s*
+        (?P<cancelled>cancelled)?
+        \s*
+        ((?P<x> -? \d+\.\d+) \s* / \s* (?P<y> -? \d+\.\d+))?                                # Absolute position 0-100% of width/height
+        \s*
+        ( \( \s* (?P<x2> -? \d+\.\d+) \s* / \s* (?P<y2> -? \d+\.\d+) \s* unaccelerated\) )? # Absolute position 0-100% of width/height
+        \s*
+        ((?P<ratio> \d+\.\d+) \s* @ \s* (?P<angle> -? \d+\.\d+))?
+    """, flags = re.VERBOSE),
+
+    POINTER = re.compile(r"""
+        ((?P<x> -? \d+\.\d+) \s* / \s* (?P<y> -? \d+\.\d+))?
+        (BTN_(?P<button> LEFT | MIDDLE | RIGHT) \s \( \d+ \) \s (?P<state> pressed | released))?
+        (vert \s ((?P<vert> -?\d+\.\d+) / 0\.0 \*?) \s horiz \s ((?P<horiz> -?\d+\.\d+) / 0\.0 \*?))?
+    """, flags = re.VERBOSE))
+
+class HANDLER:
+    cap_dict = dict(k = "keyboard",
+                    T = "tablet",
+                    t = "touch", # in actions
+                    p = "pointer", # match to gesture too ? or disregard because we don't want simple pointers ?
+                    g = "gesture", # in actions
+                    S = "switch") # in actions
+
+    def __init__(self, device):
+        self.device = device
+        self.LISTENERS = dict(DEVICE  = self.listener_device,
+                              TOUCH   = self.listener_touch,
+                              GESTURE = self.listener_gesture,
+                              SWITCH  = self.listener_switch,
+                              POINTER = self.listener_pointer)
+        self.enabled = True
+
+    def add(self, name, capabilities, sizex, sizey):
+        self.name = name
+        self.capabilities = {v for k, v in self.cap_dict.items() if k in list(capabilities)}
+        self.size = (sizex, sizey)
+
+        self.release()
+
+        # If no action relevant, disable handler
+        self.enabled = True if {k:v for k, v in actions.actions.items() if k in self.capabilities} else False
+
+        return {'verbose': f'{'Adding  ' if self.enabled else 'Ignoring'} device {name:50} ({self.device}) {self.capabilities}'}
+
+    def remove(self):
+        del(handler[self.device])
+        return {'verbose': f'Removing device  {self.name:50} ({self.device})'}
+
+    def disable(self):
+        self.enabled = False
+
+    def grab(self, device_type, time = None):
+        self.busy = True
+
+        self.wclass = subprocess.run(['xdotool', 'getwindowfocus', 'getwindowclassname'], capture_output = True).stdout.decode('utf-8').strip()
+        self.start_time = time
+        self.path = [device_type]
+
+    def release(self, message = None):
+        self.busy = False
+        self.holding = False
+        self.chaining = False
+        self.chaining_ratio = None
+        self.pre = False
+
+        self.data = dict(x = 0, y = 0, dx = 0, dy = 0, ratio = 0, dratio = 0, angle = 0, dangle = 0)
+
+        self.path = []
+        self.start_time = None
+        self.gesture = None
+        self.motion = None
+        self.wclass = None
+        self.available_motions = None
+        self.available_actions = None
+
+        return {'verbose': message} if message else None
+
+    def extend_path(self, *items):
+        self.path.extend(items)
+        return actions.validate_path(self.path)
+
+    def run(self, command = None, *items):
+        if not command:
+            valid, res = self.extend_path(*items)
+            if not valid:
+                return self.release(f'No path to action from {res} in {self.path}. Releasing handler')
+            else:
+                command = res
+
+        # Replace {} in commands
+        data = {k: int(v) for k, v in self.data.items()}
+        exprs = re.findall(r'\{[^\{\}]+\}', command)
+        for expr in exprs:
+            command = command.replace(expr, str(eval(expr[1:-1], {}, data)))
+
+        if args.verbose:
+            print(f'{PROGNAME}: {self.path} {data}')
+            print('  ', command)
+            print('')
+
+        if not args.debug:
+            run(shlex.split(command))
+
+        return None
+
+    def switch(self, switch, state):
+        if self.busy:
+            return {'debug': f'Handler for device {self.device} is in use (shouldn\'t be possible!)'}
+
+        self.grab('switch')
+
+        res = self.run(switch, state)
+
+        return res if res else self.release()
+
+    def hold(self, device_type, event, time, fingers, cancelled):
+        if event == 'BEGIN':
+            if self.busy:
+                return self.release(f'Handler for device {self.device} is in use (shouldn\'t be possible!)')
+
+            self.grab(device_type, time)
+            valid, res = self.extend_path(fingers, 'hold')
+
+            if not valid:
+                return self.release(f'No path to action from {res} in {self.path}. Releasing handler')
+            else:
+                # use a realtime timer to run 'pre' action
+                pass
+
+        elif event == 'END':
+            if not self.busy:
+                return {'verbose': 'Not listening to HOLD event end here'}
+
+            if time - self.start_time > options.hold_min_threshold:
+                if not cancelled:
+                    valid, res = self.extend_path(None)
+                    if not valid:
+                        return self.release(f'No path to action from {res} in {self.path}. Releasing handler')
+
+                    self.available_actions = res[self.wclass] if self.wclass in list(res) else res[None]
+                    if 'end' in list(self.available_actions):
+                        self.run(command = self.available_actions['end'])
+
+                    self.release()
+                else:
+                    # This will be hold+gestures
+                    # Don't remove handler and set a flag: self.holding = True
+                    return self.release()
+            else:
+                return self.release()
+
+    def begin(self, device_type, gesture, time, fingers):
+        if self.busy and not self.holding:
+            return self.release(f'Handler for device {self.device} is busy (shouldn\'t be possible!)')
+
+        self.grab(device_type, time)
+
+        valid, res = self.extend_path(fingers)
+        if not valid:
+            return self.release(f'No path to action from {res} in {self.path}. Releasing handler')
+
+        # Get gestures that can trigger actions
+        self.available_gestures = {k for k, v in res.items() if not {self.wclass, None}.isdisjoint(v['apps'])}
+
+        # Skip if only HOLD gestures registered
+        if self.available_gestures == ['HOLD']:
+            return self.release(f'No gesture with {fingers} fingers registered for device {self.device}. Releasing handler')
+
+        # Skip if libinput says the gesture is a swipe and there's no swipe action
+        if gesture == 'SWIPE':
+            if 'swipe' in self.available_gestures:
+                self.gesture = 'swipe'
+            else:
+                return self.release(f'No swipe gesture with {fingers} fingers registered. Releasing handler')
+
+    def update(self, time, fingers, x, y, ratio, angle):
+        if not self.busy:
+            return {'verbose': 'Not listening to update events for this gesture'}
+
+        # Update handler data
+        if ratio:
+            ratio = math.log(float(ratio))
+            angle = float(angle)
+            self.data['dratio'] = ratio - self.data['dratio']
+            self.data['ratio'] = ratio
+            self.data['dangle'] += angle
+            self.data['angle'] += angle
+
+        if x:
+            x = float(x)
+            y = float(y)
+            self.data['x'] += x
+            self.data['dx'] += x
+            self.data['y'] += y
+            self.data['dy'] += y
+
+        x, y, dx, dy, ratio, dratio, angle, dangle = self.data.values()
+
+        # Determine gesture within available gestures
+        if not self.gesture:
+            self.gesture = 'rotate' if 'rotate' in self.available_gestures and abs(angle) > options.angle_min_threshold \
+                     else  'pinch'  if 'pinch'  in self.available_gestures and abs(ratio) > options.ratio_min_threshold \
+                     else  'swipe'  if 'swipe'  in self.available_gestures and math.sqrt(x ** 2 + y ** 2) > options.swipe_min_threshold \
+                else None
+
+        # Get available motions
+        if self.gesture and not self.available_motions:
+            _, res = self.extend_path(self.gesture)
+            self.available_motions = {k for k, v in res.items() if (not {self.wclass, None}.isdisjoint(list(v)) and k != 'apps')}
+
+        # Determine gesture motion
+        if self.available_motions and not self.motion:
+            self.motion = 'up'    if 'up' in self.available_motions and abs(y) > abs(x) and y < 0 \
+                     else 'down'  if 'down' in self.available_motions and abs(y) > abs(x) and y > 0 \
+                     else 'left'  if 'left' in self.available_motions and abs(x) > abs(y) and x < 0 \
+                     else 'right' if 'right' in self.available_motions and abs(x) > abs(y) and x > 0 \
+                     else 'in'    if 'in' in self.available_motions and ratio < 0 \
+                     else 'out'   if 'out' in self.available_motions and ratio > 0 \
+                     else 'cw'    if 'cw' in self.available_motions and angle > 0 \
+                     else 'ccw'   if 'ccw' in self.available_motions and angle < 0 \
+                     else None
+
+        if self.chaining and \
+            ((self.gesture == 'swipe' and math.sqrt(x ** 2 + y ** 2) < options.swipe_chain_threshold) or \
+             (self.gesture == 'pinch' and abs(ratio) < options.ratio_chain_threshold) or \
+             (self.gesture == 'rotate' and abs(angle) < options.angle_chain_threshold)):
+            self.motion = None
+
+        # Get available actions
+        if self.motion and not self.available_actions:
+            _, res = actions.validate_path([*self.path, self.motion])
+            self.available_actions = res[self.wclass] if self.wclass in list(res) else res[None]
+
+        if self.available_actions:
+            if self.chaining and 'chain' not in self.available_actions:
+                self.motion = None
+                self.available_actions = None
+                return
+
+            if 'pre' in list(self.available_actions) and not self.pre:
+                self.run(command = self.available_actions['pre'])
+                self.pre = True
+
+            if 'continuous' in list(self.available_actions) and time - self.start_time > options.update_timer:
+                self.run(command = self.available_actions['continuous'])
+                self.start_time = time
+                self.data['dx'] = 0
+                self.data['dy'] = 0
+                self.data['dangle'] = 0
+                self.data['dratio'] = 0
+
+            if 'chain' in list(self.available_actions):
+                self.run(command = self.available_actions['chain'])
+                # run for hold+ : gesture is added to path and then motion/wclass/modifier
+                self.chaining = True
+                self.motion = None
+                self.available_actions = None
+                self.data = dict(x = 0, y = 0, dx = 0, dy = 0, angle = 0, ratio = 0, dangle = 0, dratio = 0)
+
+    def end(self, cancelled):
+        if not self.busy:
+            return self.release(f'Skipping end for device {self.device} as there isn\'t anything to do with it')
+
+        if self.available_actions:
+            if 'end' in list(self.available_actions) and not cancelled:
+                self.run(command = self.available_actions['end'])
+
+            if 'post' in list(self.available_actions):
+                self.run(command = self.available_actions['post'])
+
+        return self.release()
+
+    def parse(self, event, time, params):
+        time = time and float(time)
+        event = event.split('_')
+
+        # Skip the event if the device is disabled, not supported, or empty
+        if not self.enabled or not params_re.get(event[0]) or not params:
+            return
+
+        fields = params_re[event[0]].match(params)
+
+        if not fields:
+            if args.debug:
+                print(f'Error parsing event {event[0]} params: {params}', file = sys.stderr)
+            return
+
+        fields = fields.groupdict()
+
+        if args.raw:
+            print(f'Parsed event: {fields}')
+
+        # Dispatch to the relevant listener
+        answer = self.LISTENERS[event[0]](event[1:], time, **fields)
+        if answer:
+            if args.debug and 'debug' in list(answer):
+                print(answer['debug'], file = sys.stderr)
+            if args.verbose and 'verbose' in list(answer):
+                print(answer['verbose'])
+
+    def listener_device(self, event, time, name, seat, group, capabilities, sizex, sizey):
+        if event[0] == 'ADDED':
+            return self.add(name, capabilities, sizex, sizey)
+        elif event[0] == 'REMOVED':
+            return self.remove()
+        else:
+            return {'debug': f'Device event {event} not recognized'}
+
+    def listener_switch(self, event, time, switch, state):
+        if event[0] == 'TOGGLE':
+            return self.switch(switch, state = 'on' if state == '1' else 'off')
+        else:
+            return {'debug': f'Device event {event} not recognized'}
+
+    def listener_gesture(self, event, time, fingers, x, y, x2, y2, ratio, angle, cancelled):
+        fingers = int(fingers)
+
+        if event[0] == 'HOLD':
+            return self.hold('gesture', event[1], time, fingers, cancelled)
+        elif event[1] == 'BEGIN':
+            return self.begin('gesture', event[0], time, fingers)
+        elif event[1] == 'UPDATE':
+            return self.update(time, fingers, x, y, ratio, angle)
+        elif event[1] == 'END':
+            return self.end(cancelled)
+        else:
+            return {'debug': f'Device event {event} not recognized'}
+
+    def listener_pointer(self, event, time, x, y, button, state, vert, horiz):
+        if event[0] == 'SCROLL' and event[1] == 'FINGER':
+            if not self.busy and not self.holding:
+                self.begin('gesture', 'SWIPE', time, 2)
+
+            if self.busy and vert == '0.00' and horiz == '0.00':
+                self.end(False)
+            else:
+                self.update(time, 2, horiz, vert, None, None)
+
+        # BUTTON -> ignore? -> comment regex out so that it is not picked up ?
+        # BUTTON : button pressed/released
+
+        # MOTION -> swipe handler 1 / rotate handler 1
+        # MOTION : x/y, can't know if begin/update/end
+        # x = x and float(x)
+        # y = y and float(y)
+
+    # TOUCH_(?P<event> UP | DOWN | FRAME | MOTION)
+    def listener_touch(self, event, time, finger, x, y):
+        finger = int(finger)
+        x = x and float(x)
+        y = y and float(y)
+
+        # # Stuff for touch
+        # nfingers = 0
+        # lastPos = []
+        # startPos = []
+        # ready = True
+
+    #     if ready:
+    #         # Track each new finger and store its starting position
+    #         # Build an array of starting position and last know position for each finger, and increment number of fingers
+    #         if event == 'DOWN':
+    #             lastPos.append((x, y))
+    #             startPos = lastPos.copy()
+    #             nfingers += 1
+
+    #         # Follow last known position for each finger
+    #         if nfingers > 0 and event == 'MOTION':
+    #             lastPos[finger] = (x, y)
+
+    #         # Trigger gesture at the first lifted finger
+    #         # and stop reading new events until all fingers are up
+    #         if nfingers > 0 and event == 'UP':
+    #             gesture, params = touch_gesture(startPos, lastPos).values()
+    #             handler = handlers.get(gesture)
+
+    #             if handler:
+    #                 handler.begin(str(nfingers), time, options.swipe_min_threshold)
+    #                 handler.update(params, time)
+    #                 handler.end()
+    #                 handler = None
+    #             else:
+    #                 print(f'Unknown gesture received: {gesture}.', file = sys.stderr)
+
+    #             ready = False
+    #             nfingers -= 1
+    #     else:
+    #         # After the gesture is sent, wait for all fingers to be released
+    #         nfingers += (event == 'DOWN') - (event == 'UP')
+
+    #         # and reset the logic
+    #         if nfingers == 0:
+    #             lastPos = []
+    #             startPos = []
+    #             ready = True
 
 def main():
     # Set up command line arguments
     get_options()
 
-    libvers = get_libinput_vers()
-
     if args.verbose:
         # Output various info/version info
         xsession = os.getenv('XDG_SESSION_DESKTOP') or os.getenv('DESKTOP_SESSION') or 'unknown'
         xtype = os.getenv('XDG_SESSION_TYPE') or 'unknown'
-        print(f'{PROGNAME}: session {xsession}+{xtype} on {platform.platform()}, python {platform.python_version()}, libinput {libvers}')
-
-        # Output hash version/checksum of this program
-        vers = run(('md5sum', str(PROGPATH)), check = False, block = True)
-        vers = str(vers.split()[0]) if vers else '?'
-        print(f'{PROGPATH}: hash {vers}')
+        print(f'{PROGNAME}: session {xsession}+{xtype} on {platform.platform()}, python {platform.python_version()}')
 
     # Read and process the conf file
     read_conf(args.conffile, CONFNAME)
 
-    # Get touchpad device
-    device = get_touchpad()
-
     # Listen to libinput debug-events
-    cmd = listen_libinput(device)
+    cmd = listen_libinput()
+
+    handler = {}
+
+    if args.verbose:
+        print('LIBINPUT:')
 
     # Sit in a loop forever reading the libinput messages.
-    handler = None
-    nfingers = 0
-    lastPos = []
-    startPos = []
-    ready = True
-
     for line in cmd.stdout:
         line = line.strip()
 
-        # Output raw messages if debug
-        if args.debug:
-            print(line)
+        # Parse libinput output
+        fields = params_re['LIBINPUT'].match(line)
 
-        if 'TOUCH_' in line:
-            fields = touch_event_re.match(line)
+        # Something very wrong with libinput output has happened
+        if not fields:
+            sys.exit(f'Error parsing libinput line: {line}')
 
-            if not fields:
-                print(f'Unknown touch gesture received: {line}.', file = sys.stderr)
-                return
+        device, event, time, params = fields.groupdict().values()
 
-            event, time, params = fields.groupdict().values()
-            time = float(time)
+        if args.raw:
+            print(f'Raw libinput line: {line}')
+            print(f'Parsed libinput line: {device=} {event=} {time=}')
 
-            if ready:
-                # skip FRAME event and return
-                if event == 'FRAME':
-                    continue
+        # Create a handler for every device
+        if not handler.get(device):
+            handler[device] = HANDLER(device)
 
-                # skip UP event
-                elif event == 'UP':
-                    finger, fingerp, pos, realpos, x, y = None, None, None, None, None, None
+        # Pass the event and params to the handler
+        handler[device].parse(event, time, params)
 
-                # parse params for DOWN and MOTION
-                else:
-                    fields = touch_params_re.match(params)
-
-                    if not fields:
-                        print(f'Unknown touch gesture parameters received: {params}.', file = sys.stderr)
-                        return
-
-                    finger, x, y = fields.groupdict().values()
-
-                    finger = int(finger)
-                    x = float(x)
-                    y = float(y)
-
-                # Track each new finger and store its starting position
-                if event == 'DOWN':
-                    lastPos.append((x, y))
-                    startPos = lastPos.copy()
-                    nfingers += 1
-
-                # Follow last known position for each finger
-                if nfingers > 0 and event == 'MOTION':
-                    lastPos[finger] = (x, y)
-
-                # Trigger gesture at the first lifted finger
-                if nfingers > 0 and event == 'UP':
-                    gesture, params = touch_gesture(startPos, lastPos).values()
-                    handler = handlers.get(gesture)
-
-                    if handler:
-                        handler.begin(str(nfingers), time, options.swipe_min_threshold)
-                        handler.update(params, time)
-                        handler.end()
-                        handler = None
-                    else:
-                        print(f'Unknown gesture received: {gesture}.', file = sys.stderr)
-
-                    ready = False
-                    nfingers -= 1
-            else:
-                # After the gesture is sent, wait for all fingers to be released
-                nfingers += (event == 'DOWN') - (event == 'UP')
-
-                if nfingers == 0:
-                    lastPos = []
-                    startPos = []
-                    ready = True
-                continue
-
-        if "SWITCH_" in line:
-            fields = switch_event_re.match(line)
-
-            if not fields:
-                print(f'Unknown switch toggle received: {line}.', file = sys.stderr)
-                return
-
-            handler = handlers.get("SWITCH")
-
-            time, switch, state = fields.groupdict().values()
-
-            handler.action(switch, "on" if state == '1' else "off")
-            handler = None
-
-        if 'GESTURE_' in line:
-            # Split received message line into relevant fields
-            fields = gesture_event_re.match(line)
-
-            if not fields:
-                print(f'Unknown gesture + event received: {line}.', file = sys.stderr)
-                return
-
-            gesture, event, time, fingers, params = fields.groupdict().values()
-            time = float(time)
-
-            # Action each type of event
-            if event == 'BEGIN':
-                handler = handlers.get(gesture)
-
-                if handler:
-                    handler.begin(fingers, time, options.swipe_min_threshold)
-                else:
-                    print(f'Unknown gesture received: {gesture}.', file = sys.stderr)
-
-            elif event == 'UPDATE':
-                if handler:
-                    if not handler.update(re.split(r'[^-.\d]+', params), time):
-                        print(f'Could not parse {gesture} {event}: {params}', file = sys.stderr)
-
-            elif event == 'END':
-                if handler:
-                    handler.end(params == "cancelled")
-                    handler = None
+        if args.raw:
+            print()
 
 if __name__ == '__main__':
     main()
