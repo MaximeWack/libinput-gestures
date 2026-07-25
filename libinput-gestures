@@ -338,7 +338,7 @@ def get_conf_line(line):
     if key in list(options.available):
         return options.set(key, argslist[0])
     elif key in list(actions.available):
-        actions.parse(restrict, key, argslist[0])
+        return actions.parse(restrict, key, argslist[0])
 
 def center(points):
     center = [0, 0]
