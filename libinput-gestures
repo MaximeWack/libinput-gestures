@@ -25,8 +25,9 @@ CONFNAME = f'{PROGNAME}.conf'
 USERDIR = os.getenv('XDG_CONFIG_HOME', os.path.expanduser('~/.config'))
 CONFDIRS = (USERDIR, '/etc')
 
-# Singleton class for storing options
 class OPTIONS:
+    'Singleton class for storing options'
+
     # Configurable options with their default values and validation functions
     available = dict(
         swipe_min_threshold   = dict(default = 5    , valid = float, help = "Minimum travel distance to register a swipe"),
@@ -39,13 +40,13 @@ class OPTIONS:
         update_timer          = dict(default = .1   , valid = float, help = "Time interval at which update a continuous motion"),
         device                = dict(default = "all", valid = str,   help = '"all", or device name, or device path'))
 
-    # Create attributes from the dict and set default values
     def __init__(self):
+        'Create attributes from the dict and set default values'
         for opt, params in self.available.items():
             setattr(self, opt, params["default"])
 
-    # Set an option value (arg > conf > default)
     def set(self, option, value):
+        'Set an option value (arg > conf > default)'
         arg = getattr(args, option)
         valid = self.available[option]["valid"]
 
@@ -60,10 +61,10 @@ class OPTIONS:
             except:
                 return f'Option {option} must be of type {valid.__name__}'
 
-    # Ensure single instance
     instance = None
 
     def __new__(cls):
+        'Ensure single instance'
         if cls.instance is None:
             cls.instance = super().__new__(cls)
             return cls.instance
@@ -72,6 +73,9 @@ class OPTIONS:
 options = OPTIONS()
 
 class ACTIONS:
+    'Singleton class for storing actions'
+
+    # Configurable actions and how to parse them
     available = dict(switch = {'toggle'   : ('tablet-mode', 'lid', 'keypad-slide'),
                                'state'    : ('on', 'off'),
                                'command'  : '.*'},
@@ -99,20 +103,20 @@ class ACTIONS:
     actions = {}
     parsed_actions = []
 
-    # Build parsing regexes from dict
     def __init__(self):
-       for action, params in self.available.items():
-           verbs = []
-           for verb, arg in params.items():
-               arg = '|'.join(arg) if type(arg).__name__ != "str" else arg
-               if verb[-1] == "?":
-                   verbs.append(rf"""(?P<{verb[:-1]}>{arg})?""")
-               else:
-                   verbs.append(rf"""(?P<{verb}>{arg})""")
-           self.conf_re[action] = re.compile(rf"""\s*""".join(verbs))
+        'Build parsing regexes from dict'
+        for action, params in self.available.items():
+            verbs = []
+            for verb, arg in params.items():
+                arg = '|'.join(arg) if type(arg).__name__ != "str" else arg
+                if verb[-1] == "?":
+                    verbs.append(rf"""(?P<{verb[:-1]}>{arg})?""")
+                else:
+                    verbs.append(rf"""(?P<{verb}>{arg})""")
+            self.conf_re[action] = re.compile(rf"""\s*""".join(verbs))
 
-    # Parse a conf line with the action regexes
     def parse(self, restrict, action, args):
+        'Parse a conf line with the action regexes'
         fields = self.conf_re[action].match(args)
 
         if not fields:
@@ -126,10 +130,12 @@ class ACTIONS:
             self.add(restrict, action, **fields)
 
     def add_switch(self, toggle, state, command):
+        'Add a switch action'
         self.parsed_actions.append(f'switch {toggle:12} {state:3} {command}')
         self.build_path('switch', toggle, state, command = command)
 
     def add(self, restrict, action, fingers, wclass, modifier, command, motion = None):
+        'Add all other actions'
         fingers = int(fingers)
         modifier = modifier or 'end'
 
@@ -170,10 +176,10 @@ class ACTIONS:
     def __str__(self):
         return '\n'.join(sorted(self.parsed_actions))
 
-    # Ensure single instance
     instance = None
 
     def __new__(cls):
+        'Ensure single instance'
         if cls.instance is None:
             cls.instance = super().__new__(cls)
             return cls.instance
@@ -195,13 +201,14 @@ def open_lock(*args):
     return fp
 
 def run(cmd):
-    'Run function and return standard output, Popen() handle, or None'
+    'Run command'
     try:
         subprocess.Popen(cmd)
     except Exception as e:
         print(str(e), file = sys.stderr)
 
 def listen_libinput():
+    'Run libinput debug-events and listen to its output'
     # Make sure only one instance running for current user
     user = getpass.getuser()
     proglock = open_lock(PROGNAME, user)
@@ -223,6 +230,7 @@ def listen_libinput():
     return cmd
 
 def get_options():
+    'Parse the command-line options'
     global args
     opt = argparse.ArgumentParser(description = __doc__)
     opt.add_argument('-c',
@@ -259,9 +267,8 @@ def unexpanduser(cfile):
 
     return ('~/' + str(relhome)) if relhome else str(relslash)
 
-# Search for configuration file. Use file given as command line argument,
-# else look for file in search dir order.
 def read_conf(conffile, defname):
+    'Search for configuration file. Use file given as command line argument, else look for file in search dir order'
     if conffile:
         confpath = Path(conffile)
 
@@ -282,7 +289,7 @@ def read_conf(conffile, defname):
     # Read and process the conf file
     get_conf(confpath, confname)
 
-    # List out available gestures if that is asked for
+    # List out available gestures and configured options if that is asked for
     if args.verbose:
         if actions.actions:
             print('', f'Gestures configured in {confname}:', sep = '\n')
@@ -393,6 +400,7 @@ def touch_gesture(startPos, lastPos):
         return({'gesture': 'SWIPE',
                 'params': [0, 0, xrel, yrel]})
 
+# Parsing regexes for libinput events
 params_re = dict(
     LIBINPUT = re.compile(r"""
         .*?
@@ -454,6 +462,9 @@ params_re = dict(
     """, flags = re.VERBOSE))
 
 class HANDLER:
+    'Class for device handler objects'
+
+    # Available capabilities
     cap_dict = dict(k = "keyboard",
                     T = "tablet",
                     t = "touch", # in actions
@@ -462,6 +473,7 @@ class HANDLER:
                     S = "switch") # in actions
 
     def __init__(self, device):
+        'Initialize a device handler'
         self.device = device
         self.LISTENERS = dict(DEVICE  = self.listener_device,
                               TOUCH   = self.listener_touch,
@@ -471,6 +483,7 @@ class HANDLER:
         self.enabled = True
 
     def add(self, name, capabilities, sizex, sizey):
+        'Populate handler parameters and decide if it\'s enabled'
         self.name = name
         self.capabilities = {v for k, v in self.cap_dict.items() if k in list(capabilities)}
         self.size = (sizex, sizey)
@@ -483,6 +496,7 @@ class HANDLER:
         return {'verbose': f'{'Adding  ' if self.enabled else 'Ignoring'} device {name:50} ({self.device}) {self.capabilities}'}
 
     def remove(self):
+        'Remove the handler for an unplugged device'
         del(handler[self.device])
         return {'verbose': f'Removing device  {self.name:50} ({self.device})'}
 
@@ -490,6 +504,7 @@ class HANDLER:
         self.enabled = False
 
     def grab(self, device_type, time = None):
+        'Grab a handler and set its current device type, the focused window class, and the starting time'
         self.busy = True
 
         self.wclass = subprocess.run(['xdotool', 'getwindowfocus', 'getwindowclassname'], capture_output = True).stdout.decode('utf-8').strip()
@@ -497,10 +512,10 @@ class HANDLER:
         self.path = [device_type]
 
     def release(self, message = None):
+        'Release a handler and reset its state'
         self.busy = False
         self.holding = False
         self.chaining = False
-        self.chaining_ratio = None
         self.pre = False
 
         self.data = dict(x = 0, y = 0, dx = 0, dy = 0, ratio = 0, dratio = 0, angle = 0, dangle = 0)
@@ -516,10 +531,12 @@ class HANDLER:
         return {'verbose': message} if message else None
 
     def extend_path(self, *items):
+        'Extend the action path and validate it'
         self.path.extend(items)
         return actions.validate_path(self.path)
 
     def run(self, command = None, *items):
+        'Run the given command or the one at the end of path + *items'
         if not command:
             valid, res = self.extend_path(*items)
             if not valid:
@@ -544,6 +561,7 @@ class HANDLER:
         return None
 
     def switch(self, switch, state):
+        'Handle a switch action'
         if self.busy:
             return {'debug': f'Handler for device {self.device} is in use (shouldn\'t be possible!)'}
 
@@ -554,6 +572,7 @@ class HANDLER:
         return res if res else self.release()
 
     def hold(self, device_type, event, time, fingers, cancelled):
+        'Handle a hold action'
         if event == 'BEGIN':
             if self.busy:
                 return self.release(f'Handler for device {self.device} is in use (shouldn\'t be possible!)')
@@ -590,6 +609,7 @@ class HANDLER:
                 return self.release()
 
     def begin(self, device_type, gesture, time, fingers):
+        'Handle the begin event of all other actions'
         if self.busy and not self.holding:
             return self.release(f'Handler for device {self.device} is busy (shouldn\'t be possible!)')
 
@@ -614,6 +634,7 @@ class HANDLER:
                 return self.release(f'No swipe gesture with {fingers} fingers registered. Releasing handler')
 
     def update(self, time, fingers, x, y, ratio, angle):
+        'Handle the update event of all other actions'
         if not self.busy:
             return {'verbose': 'Not listening to update events for this gesture'}
 
@@ -660,6 +681,7 @@ class HANDLER:
                      else 'ccw'   if 'ccw' in self.available_motions and angle < 0 \
                      else None
 
+        # Register motion only if over *_chain_threshold
         if self.chaining and \
             ((self.gesture == 'swipe' and math.sqrt(x ** 2 + y ** 2) < options.swipe_chain_threshold) or \
              (self.gesture == 'pinch' and abs(ratio) < options.ratio_chain_threshold) or \
@@ -671,6 +693,7 @@ class HANDLER:
             _, res = actions.validate_path([*self.path, self.motion])
             self.available_actions = res[self.wclass] if self.wclass in list(res) else res[None]
 
+        # Run early actions (pre, chain, continuous)
         if self.available_actions:
             if self.chaining and 'chain' not in self.available_actions:
                 self.motion = None
@@ -698,9 +721,11 @@ class HANDLER:
                 self.data = dict(x = 0, y = 0, dx = 0, dy = 0, angle = 0, ratio = 0, dangle = 0, dratio = 0)
 
     def end(self, cancelled):
+        'Handle end event for all actions'
         if not self.busy:
             return self.release(f'Skipping end for device {self.device} as there isn\'t anything to do with it')
 
+        # Run late actions (end, post)
         if self.available_actions:
             if 'end' in list(self.available_actions) and not cancelled:
                 self.run(command = self.available_actions['end'])
@@ -711,6 +736,7 @@ class HANDLER:
         return self.release()
 
     def parse(self, event, time, params):
+        'Parse a libinput line and dispatch to the relevant listener'
         time = time and float(time)
         event = event.split('_')
 
@@ -739,6 +765,7 @@ class HANDLER:
                 print(answer['verbose'])
 
     def listener_device(self, event, time, name, seat, group, capabilities, sizex, sizey):
+        'Listener for DEVICE lines'
         if event[0] == 'ADDED':
             return self.add(name, capabilities, sizex, sizey)
         elif event[0] == 'REMOVED':
@@ -747,12 +774,14 @@ class HANDLER:
             return {'debug': f'Device event {event} not recognized'}
 
     def listener_switch(self, event, time, switch, state):
+        'Listener for SWITCH lines'
         if event[0] == 'TOGGLE':
             return self.switch(switch, state = 'on' if state == '1' else 'off')
         else:
             return {'debug': f'Device event {event} not recognized'}
 
     def listener_gesture(self, event, time, fingers, x, y, x2, y2, ratio, angle, cancelled):
+        'Listener for GESTURE lines'
         fingers = int(fingers)
 
         if event[0] == 'HOLD':
@@ -767,6 +796,7 @@ class HANDLER:
             return {'debug': f'Device event {event} not recognized'}
 
     def listener_pointer(self, event, time, x, y, button, state, vert, horiz):
+        'Listener for POINTER lines'
         if event[0] == 'SCROLL' and event[1] == 'FINGER':
             if not self.busy and not self.holding:
                 self.begin('gesture', 'SWIPE', time, 2)
@@ -786,6 +816,7 @@ class HANDLER:
 
     # TOUCH_(?P<event> UP | DOWN | FRAME | MOTION)
     def listener_touch(self, event, time, finger, x, y):
+        'Listener for TOUCH lines'
         finger = int(finger)
         x = x and float(x)
         y = y and float(y)
@@ -838,8 +869,8 @@ def main():
     # Set up command line arguments
     get_options()
 
+    # Output various info/version info
     if args.verbose:
-        # Output various info/version info
         xsession = os.getenv('XDG_SESSION_DESKTOP') or os.getenv('DESKTOP_SESSION') or 'unknown'
         xtype = os.getenv('XDG_SESSION_TYPE') or 'unknown'
         print(f'{PROGNAME}: session {xsession}+{xtype} on {platform.platform()}, python {platform.python_version()}')
