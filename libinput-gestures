@@ -115,7 +115,7 @@ class ACTIONS:
                     verbs.append(rf"""(?P<{verb}>{arg})""")
             self.conf_re[action] = re.compile(rf"""\s*""".join(verbs))
 
-    def parse(self, restrict, action, args):
+    def parse(self, restrict, hold, action, args):
         'Parse a conf line with the action regexes'
         fields = self.conf_re[action].match(args)
 
@@ -127,25 +127,33 @@ class ACTIONS:
         if action == 'switch':
             self.add_switch(**fields)
         else:
-            self.add(restrict, action, **fields)
+            self.add(restrict, hold, action, **fields)
 
     def add_switch(self, toggle, state, command):
         'Add a switch action'
         self.parsed_actions.append(f'switch {toggle:12} {state:3} {command}')
         self.build_path('switch', toggle, state, command = command)
 
-    def add(self, restrict, action, fingers, wclass, modifier, command, motion = None):
+    def add(self, restrict, hold, action, fingers, wclass, modifier, command, motion = None):
         'Add all other actions'
         fingers = int(fingers)
         modifier = modifier or 'end'
 
-        self.parsed_actions.append(f'{restrict or '':7} {action:6} {fingers} {motion:5} {modifier:10} {command:60} {wclass or '':>}')
+        self.parsed_actions.append(f'{restrict or '':7} {hold or ''}{action:6} {fingers} {motion:5} {modifier:10} {command:60} {wclass or '':>}')
 
         wclass = wclass and wclass[1:-1]
         restrict = [restrict] if restrict else ['touch', 'gesture']
 
         for r in restrict:
-            self.build_path(r, fingers, action, motion, wclass, modifier, command = command)
+            if hold:
+                self.build_path(r, fingers, 'hold', action, motion, wclass, modifier, command = command)
+                if not self.actions[r][fingers]['hold'][action].get('apps'):
+                    self.actions[r][fingers]['hold'][action]['apps'] = set()
+
+                self.actions[r][fingers]['hold'][action]['apps'].add(wclass)
+                action = 'hold'
+            else:
+                self.build_path(r, fingers, action, motion, wclass, modifier, command = command)
 
             if not self.actions[r][fingers][action].get('apps'):
                 self.actions[r][fingers][action]['apps'] = set()
@@ -330,15 +338,22 @@ def get_conf_line(line):
     key, *argslist = line.split(maxsplit = 1)
 
     restrict = None
+    hold = None
 
     if key == 'touch' or key == 'gesture':
         restrict = key
         key, *argslist = argslist[0].split(maxsplit = 1)
 
+    if key[:5] == 'hold+':
+        hold = 'hold+'
+        key = key[5:]
+
     if key in list(options.available):
         return options.set(key, argslist[0])
     elif key in list(actions.available):
-        return actions.parse(restrict, key, argslist[0])
+        return actions.parse(restrict, hold, key, argslist[0])
+    else:
+        return f'Unavailable action/option {key}'
 
 def center(points):
     center = [0, 0]
@@ -599,9 +614,11 @@ class HANDLER:
 
                     self.release()
                 else:
-                    # This will be hold+gestures
-                    # Don't remove handler and set a flag: self.holding = True
-                    return self.release()
+                    valid, res = actions.validate_path(self.path)
+                    if list(res) == [None]:
+                        return self.release(f'No hold+ action. Releasing handler')
+                    else:
+                        self.holding = True
             else:
                 return self.release()
 
@@ -610,14 +627,17 @@ class HANDLER:
         if self.busy and not self.holding:
             return self.release(f'Handler for device {self.device} is busy (shouldn\'t be possible!)')
 
-        self.grab(device_type, time)
+        if not self.holding:
+            self.grab(device_type, time)
 
-        valid, res = self.extend_path(fingers)
-        if not valid:
-            return self.release(f'No path to action from {res} in {self.path}. Releasing handler')
+            valid, res = self.extend_path(fingers)
+            if not valid:
+                return self.release(f'No path to action from {res} in {self.path}. Releasing handler')
+        else:
+            valid, res = actions.validate_path(self.path)
 
         # Get gestures that can trigger actions
-        self.available_gestures = {k for k, v in res.items() if not {self.wclass, None}.isdisjoint(v['apps'])}
+        self.available_gestures = {k for k, v in res.items() if k != "apps" and not {self.wclass, None}.isdisjoint(v['apps'])}
 
         # Skip if only HOLD gestures registered
         if self.available_gestures == ['HOLD']:
@@ -711,7 +731,6 @@ class HANDLER:
 
             if 'chain' in list(self.available_actions):
                 self.run(command = self.available_actions['chain'])
-                # run for hold+ : gesture is added to path and then motion/wclass/modifier
                 self.chaining = True
                 self.motion = None
                 self.available_actions = None
