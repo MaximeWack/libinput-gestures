@@ -486,8 +486,6 @@ class HANDLER:
         if not args.debug:
             subprocess.run(shlex.split(command))
 
-        return None
-
     def switch(self, switch, state):
         'Handle a switch action'
         if self.busy:
