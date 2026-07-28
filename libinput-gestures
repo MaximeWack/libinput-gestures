@@ -470,7 +470,7 @@ class HANDLER:
         return True
 
     def run(self, command):
-        'Run the given command or the one at the end of path + *items'
+        'Run the given command'
         if not command:
             return self.release(f'No command to execute. Releasing handler')
 
