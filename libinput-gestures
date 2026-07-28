@@ -596,20 +596,20 @@ class HANDLER:
 
         # Determine gesture motion
         if self.available_motions and not self.motion:
-            self.motion = 'up'    if 'up' in self.available_motions and abs(y) > abs(x) and y < 0 \
-                     else 'down'  if 'down' in self.available_motions and abs(y) > abs(x) and y > 0 \
-                     else 'left'  if 'left' in self.available_motions and abs(x) > abs(y) and x < 0 \
+            self.motion = 'up'    if 'up'    in self.available_motions and abs(y) > abs(x) and y < 0 \
+                     else 'down'  if 'down'  in self.available_motions and abs(y) > abs(x) and y > 0 \
+                     else 'left'  if 'left'  in self.available_motions and abs(x) > abs(y) and x < 0 \
                      else 'right' if 'right' in self.available_motions and abs(x) > abs(y) and x > 0 \
-                     else 'in'    if 'in' in self.available_motions and ratio < 0 \
-                     else 'out'   if 'out' in self.available_motions and ratio > 0 \
-                     else 'cw'    if 'cw' in self.available_motions and angle > 0 \
-                     else 'ccw'   if 'ccw' in self.available_motions and angle < 0 \
+                     else 'in'    if 'in'    in self.available_motions and ratio < 0 \
+                     else 'out'   if 'out'   in self.available_motions and ratio > 0 \
+                     else 'cw'    if 'cw'    in self.available_motions and angle > 0 \
+                     else 'ccw'   if 'ccw'   in self.available_motions and angle < 0 \
                      else None
 
         # Register motion only if over *_chain_threshold
         if self.chaining and \
-            ((self.gesture == 'swipe' and math.sqrt(x ** 2 + y ** 2) < options.swipe_chain_threshold) or \
-             (self.gesture == 'pinch' and abs(ratio) < options.ratio_chain_threshold) or \
+            ((self.gesture == 'swipe'  and math.sqrt(x ** 2 + y ** 2) < options.swipe_chain_threshold) or \
+             (self.gesture == 'pinch'  and abs(ratio) < options.ratio_chain_threshold) or \
              (self.gesture == 'rotate' and abs(angle) < options.angle_chain_threshold)):
             self.motion = None
 
