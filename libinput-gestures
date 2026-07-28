@@ -364,64 +364,35 @@ def get_conf_line(line):
 
 # Parsing regexes for libinput events
 params_re = dict(
-    LIBINPUT = re.compile(r"""
-        .*?
-        (?P<device> event\d+)                  # Device
-        \s*
-        (?P<event> [A-Z_]+)                    # Event
-        \s*
-        (?:\d+)?                               # Event number within frame
-        \s*
-        (\+ (?P<time> \d+\.\d+) s)?            # Time
-        \s*
-        (?P<params> .*)?                       # Params
-    """, flags = re.VERBOSE),
+    LIBINPUT = re.compile(r""".*? (?P<device> event\d+)                  # Device
+                              \s* (?P<event> [A-Z_]+)                    # Event
+                              \s* (?:\d+)?                               # Event number within frame
+                              \s* (\+ (?P<time> \d+\.\d+) s)?            # Time
+                              \s* (?P<params> .*)?                       # Params""", flags = re.VERBOSE),
 
-    DEVICE = re.compile(r"""
-        (?P<name>.*?)
-        \s*
-        (?P<seat>seat\d \s default)
-        \s*
-        (?P<group>group\d+)
-        \s*
-        (cap:(?P<capabilities>[kpgStT]+))
-        \s*
-        (size \s (?P<sizex>\d+) x (?P<sizey>\d+) mm)?
-    """, flags = re.VERBOSE),
+    DEVICE = re.compile(r"""(?P<name>.*?)                                # Device name
+                            \s* (?P<seat>seat\d \s default)              # Seat
+                            \s* (?P<group>group\d+)                      # Group
+                            \s* (cap:(?P<capabilities>[kpgStT]+))        # Capabilities
+                            \s* (size \s (?P<sizex>\d+) x (?P<sizey>\d+) mm)? """, flags = re.VERBOSE),
 
-    SWITCH = re.compile(r"""
-        switch
-        \s+
-        (?P<switch> tablet-mode | lid | keypad-slide) # Switch name
-        \s*
-        state \s+ (?P<state> 0 | 1)                   # State
-    """, flags = re.VERBOSE),
+    SWITCH = re.compile(r"""switch
+                            \s+ (?P<switch> tablet-mode | lid | keypad-slide) # Switch name
+                            \s* state \s+ (?P<state> 0 | 1)                   # State """, flags = re.VERBOSE),
 
-    TOUCH = re.compile(r"""
-        (?P<finger> \d)?                          # Finger
-        \s*
-        \( (?P=finger) \)?
-        \s*
-        ((?P<x> \d+\.\d+) /\s* (?P<y> \d+\.\d+))? # Absolute position 0-100% of width/height
-    """, flags = re.VERBOSE),
+    TOUCH = re.compile(r"""(?P<finger> \d)?                              # Finger
+                           \s* \( (?P=finger) \)?
+                           \s* ((?P<x> \d+\.\d+) /\s* (?P<y> \d+\.\d+))? # Absolute position 0-100% of width/height """, flags = re.VERBOSE),
 
-    GESTURE = re.compile(r"""
-        (?P<fingers> \d)                                                                    # Fingers
-        \s*
-        (?P<cancelled>cancelled)?
-        \s*
-        ((?P<x> -? \d+\.\d+) \s* / \s* (?P<y> -? \d+\.\d+))?                                # Absolute position 0-100% of width/height
-        \s*
-        ( \( \s* (?P<x2> -? \d+\.\d+) \s* / \s* (?P<y2> -? \d+\.\d+) \s* unaccelerated\) )? # Absolute position 0-100% of width/height
-        \s*
-        ((?P<ratio> \d+\.\d+) \s* @ \s* (?P<angle> -? \d+\.\d+))?
-    """, flags = re.VERBOSE),
+    GESTURE = re.compile(r"""(?P<fingers> \d)                                                  # Fingers
+                             \s* (?P<cancelled>cancelled)?
+                             \s* ((?P<x> -? \d+\.\d+) \s* / \s* (?P<y> -? \d+\.\d+))?                                # Absolute position 0-100% of width/height
+                             \s* ( \( \s* (?P<x2> -? \d+\.\d+) \s* / \s* (?P<y2> -? \d+\.\d+) \s* unaccelerated\) )? # Absolute position 0-100% of width/height
+                             \s* ((?P<ratio> \d+\.\d+) \s* @ \s* (?P<angle> -? \d+\.\d+))? """, flags = re.VERBOSE),
 
-    POINTER = re.compile(r"""
-        ((?P<x> -? \d+\.\d+) \s* / \s* (?P<y> -? \d+\.\d+))?
-        (BTN_(?P<button> LEFT | MIDDLE | RIGHT) \s \( \d+ \) \s (?P<state> pressed | released))?
-        (vert \s ((?P<vert> -?\d+\.\d+) / 0\.0 \*?) \s horiz \s ((?P<horiz> -?\d+\.\d+) / 0\.0 \*?))?
-    """, flags = re.VERBOSE))
+    POINTER = re.compile(r"""((?P<x> -? \d+\.\d+) \s* / \s* (?P<y> -? \d+\.\d+))?
+                             (BTN_(?P<button> LEFT | MIDDLE | RIGHT) \s \( \d+ \) \s (?P<state> pressed | released))?
+                             (vert \s ((?P<vert> -?\d+\.\d+) / 0\.0 \*?) \s horiz \s ((?P<horiz> -?\d+\.\d+) / 0\.0 \*?))? """, flags = re.VERBOSE))
 
 class HANDLER:
     'Class for device handler objects'
