@@ -175,16 +175,6 @@ class ACTIONS:
 
         current[args[-1]] = command
 
-    def validate_path(self, path):
-        'Return the first path item not matching, or the resulting action path'
-        current = self.actions
-        for item in path:
-           current = current.get(item)
-           if not current:
-               return (False, item)
-
-        return (True, current)
-
     def __str__(self):
         return '\n'.join(sorted(self.parsed_actions))
 
@@ -470,7 +460,7 @@ class HANDLER:
         self.release()
 
         # If no action relevant, disable handler
-        self.enabled = True if {k:v for k, v in actions.actions.items() if k in self.capabilities} else False
+        self.enabled = True if self.actions else False
 
         return {'verbose': f'{'Adding  ' if self.enabled else 'Ignoring'} device {name:50} ({self.device}) {self.capabilities}'}
 
@@ -485,7 +475,7 @@ class HANDLER:
 
         self.wclass = subprocess.run(['xdotool', 'getwindowfocus', 'getwindowclassname'], capture_output = True).stdout.decode('utf-8').strip()
         self.start_time = time
-        self.path = [device_type]
+        self.actions = self.actions[device_type]
 
     def release(self, message = None):
         'Release a handler and reset its state'
@@ -495,8 +485,8 @@ class HANDLER:
         self.pre = False
 
         self.data = dict(x = 0, y = 0, dx = 0, dy = 0, ratio = 0, dratio = 0, angle = 0, dangle = 0)
+        self.actions = {k:v for k, v in actions.actions.items() if k in self.capabilities}
 
-        self.path = []
         self.start_time = None
         self.gesture = None
         self.motion = None
@@ -506,19 +496,19 @@ class HANDLER:
 
         return {'verbose': message} if message else None
 
-    def extend_path(self, *items):
-        'Extend the action path and validate it'
-        self.path.extend(items)
-        return actions.validate_path(self.path)
+    def advance(self, *items):
+        'Advance the action path'
+        for item in items:
+           self.actions = self.actions.get(item)
+           if not self.actions:
+               return False
 
-    def run(self, command = None, *items):
+        return True
+
+    def run(self, command):
         'Run the given command or the one at the end of path + *items'
         if not command:
-            valid, res = self.extend_path(*items)
-            if not valid:
-                return self.release(f'No path to action from {res} in {self.path}. Releasing handler')
-            else:
-                command = res
+            return self.release(f'No command to execute. Releasing handler')
 
         # Replace {} in commands
         data = {k: int(v) for k, v in self.data.items()}
@@ -527,7 +517,6 @@ class HANDLER:
             command = command.replace(expr, str(eval(expr[1:-1], {}, data)))
 
         if args.verbose:
-            print(f'{self.path} {data}')
             print(f'\033[1m\033[92m  {command}\033[0m')
 
         if not args.debug:
@@ -542,9 +531,11 @@ class HANDLER:
 
         self.grab('switch')
 
-        res = self.run(switch, state)
-
-        return res if res else self.release()
+        if self.advance(switch, state):
+            self.run(self.actions)
+            self.release()
+        else:
+            return self.release(f'No action for switch {switch} {state}')
 
     def hold(self, device_type, event, time, fingers, cancelled):
         'Handle a hold action'
@@ -553,57 +544,52 @@ class HANDLER:
                 return self.release(f'Handler for device {self.device} is in use (shouldn\'t be possible!)')
 
             self.grab(device_type, time)
-            valid, res = self.extend_path(fingers, 'hold')
 
-            if not valid:
-                return self.release(f'No path to action from {res} in {self.path}. Releasing handler')
-            else:
-                # use a realtime timer to run 'pre' action
                 pass
 
         elif event == 'END':
             if not self.busy:
                 return {'verbose': 'Not listening to HOLD event end here'}
 
-            if time - self.start_time > options.hold_min_threshold:
-                if not cancelled:
-                    valid, res = self.extend_path(None)
-                    if not valid:
-                        return self.release(f'No path to action from {res} in {self.path}. Releasing handler')
-
-                    self.available_actions = res[self.wclass] if self.wclass in list(res) else res[None]
-                    if 'end' in list(self.available_actions):
-                        self.run(command = self.available_actions['end'])
-
-                    self.release()
-                else:
-                    valid, res = actions.validate_path(self.path)
-                    if list(res) == [None]:
+            # Hold didn't go over the set threshold
+            if time - self.start_time < options.hold_min_threshold:
+                return self.release(f'Hold event not lasting long enough')
+            else:
+                # Cancelled hold (hold+ if exists)
+                if cancelled:
+                    if list(self.actions) == [None]:
                         return self.release(f'No hold+ action. Releasing handler')
                     else:
                         self.holding = True
-            else:
-                return self.release()
+                # Simple hold
+                else:
+                    if not self.advance(None):
+                        return self.release(f'No action for holding {fingers} fingers. Releasing handler')
+
+                    self.available_actions = self.actions[self.wclass] if self.wclass in list(self.actions) else self.actions[None]
+                    if 'end' in list(self.available_actions):
+                        self.run(self.available_actions['end'])
+                        self.release()
+                    else:
+                        return self.release(f'No end action for holding {fingers} fingers. Releasing handler')
 
     def begin(self, device_type, gesture, time, fingers):
         'Handle the begin event of all other actions'
         if self.busy and not self.holding:
             return self.release(f'Handler for device {self.device} is busy (shouldn\'t be possible!)')
 
+        # Only grab handler if not in a hold+ gesture
         if not self.holding:
             self.grab(device_type, time)
 
-            valid, res = self.extend_path(fingers)
-            if not valid:
-                return self.release(f'No path to action from {res} in {self.path}. Releasing handler')
-        else:
-            valid, res = actions.validate_path(self.path)
+            if not self.advance(fingers):
+                return self.release(f'No action for gesture with {fingers} fingers. Releasing handler')
 
         # Get gestures that can trigger actions
-        self.available_gestures = {k for k, v in res.items() if k != "apps" and not {self.wclass, None}.isdisjoint(v['apps'])}
+        self.available_gestures = {k for k, v in self.actions.items() if k != "apps" and not {self.wclass, None}.isdisjoint(v['apps'])}
 
         # Skip if only HOLD gestures registered
-        if self.available_gestures == ['HOLD']:
+        if self.available_gestures == ['hold']:
             return self.release(f'No gesture with {fingers} fingers registered for device {self.device}. Releasing handler')
 
         # Skip if libinput says the gesture is a swipe and there's no swipe action
@@ -611,7 +597,7 @@ class HANDLER:
             if 'swipe' in self.available_gestures:
                 self.gesture = 'swipe'
             else:
-                return self.release(f'No swipe gesture with {fingers} fingers registered. Releasing handler')
+                return self.release(f'No action for swipe with {fingers} fingers. Releasing handler')
 
     def update(self, time, fingers, x, y, ratio, angle):
         'Handle the update event of all other actions'
@@ -646,8 +632,7 @@ class HANDLER:
 
         # Get available motions
         if self.gesture and not self.available_motions:
-            _, res = self.extend_path(self.gesture)
-            self.available_motions = {k for k, v in res.items() if (not {self.wclass, None}.isdisjoint(list(v)) and k != 'apps')}
+            self.available_motions = {k for k, v in self.actions[self.gesture].items() if (not {self.wclass, None}.isdisjoint(list(v)) and k != 'apps')}
 
         # Determine gesture motion
         if self.available_motions and not self.motion:
@@ -670,30 +655,34 @@ class HANDLER:
 
         # Get available actions
         if self.motion and not self.available_actions:
-            _, res = actions.validate_path([*self.path, self.motion])
+            res = self.actions[self.gesture][self.motion]
             self.available_actions = res[self.wclass] if self.wclass in list(res) else res[None]
 
         # Run early actions (pre, chain, continuous)
         if self.available_actions:
+            # Only register chaining motions while in a chain
             if self.chaining and 'chain' not in self.available_actions:
                 self.motion = None
                 self.available_actions = None
                 return
 
+            # Execute pre action only once
             if 'pre' in list(self.available_actions) and not self.pre:
-                self.run(command = self.available_actions['pre'])
+                self.run(self.available_actions['pre'])
                 self.pre = True
 
+            # Execute continuous action every timer tick and reset time and delta data
             if 'continuous' in list(self.available_actions) and time - self.start_time > options.update_timer:
-                self.run(command = self.available_actions['continuous'])
+                self.run(self.available_actions['continuous'])
                 self.start_time = time
                 self.data['dx'] = 0
                 self.data['dy'] = 0
                 self.data['dangle'] = 0
                 self.data['dratio'] = 0
 
+            # Execute chain action and reset prior to determining motion
             if 'chain' in list(self.available_actions):
-                self.run(command = self.available_actions['chain'])
+                self.run(self.available_actions['chain'])
                 self.chaining = True
                 self.motion = None
                 self.available_actions = None
@@ -707,10 +696,10 @@ class HANDLER:
         # Run late actions (end, post)
         if self.available_actions:
             if 'end' in list(self.available_actions) and not cancelled:
-                self.run(command = self.available_actions['end'])
+                self.run(self.available_actions['end'])
 
             if 'post' in list(self.available_actions):
-                self.run(command = self.available_actions['post'])
+                self.run(self.available_actions['post'])
 
         return self.release()
 
