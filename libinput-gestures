@@ -202,13 +202,6 @@ def open_lock(*args):
 
     return fp
 
-def run(cmd):
-    'Run command'
-    try:
-        subprocess.Popen(cmd)
-    except Exception as e:
-        print(str(e), file = sys.stderr)
-
 def listen_libinput():
     'Run libinput debug-events and listen to its output'
     # Make sure only one instance running for current user
@@ -520,7 +513,7 @@ class HANDLER:
             print(f'\033[1m\033[92m  {command}\033[0m')
 
         if not args.debug:
-            run(shlex.split(command))
+            subprocess.run(shlex.split(command))
 
         return None
 
