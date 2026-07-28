@@ -536,11 +536,10 @@ class HANDLER:
 
     def begin(self, device_type, gesture, time, fingers):
         'Handle the begin event of all other actions'
-        if self.busy and not self.holding:
-            return self.release(f'Handler for device {self.device} is busy (shouldn\'t be possible!)')
-
         # Only grab handler if not in a hold+ gesture
         if not self.holding:
+            if self.busy:
+                return self.release(f'Handler for device {self.device} is busy (shouldn\'t be possible!)')
 
             if not self.grab(device_type, fingers, time = time):
                 return self.release(f'No action for gesture with {fingers} fingers. Releasing handler')
