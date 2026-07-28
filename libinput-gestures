@@ -144,7 +144,7 @@ class ACTIONS:
 
         wclass = wclass and wclass[1:-1] or wclass_prefix
 
-        self.parsed_actions.append(f'{restrict or '':7} {hold or ''}{action:6} {fingers} {motion:5} {modifier:10} {command:60} {wclass or '':>}')
+        self.parsed_actions.append(f'{restrict or '':7} {hold or ''}{action:6} {fingers} {motion or '':5} {modifier:10} {command:60} {wclass or '':>}')
 
         restrict = [restrict] if restrict else ['touch', 'gesture']
 
