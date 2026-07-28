@@ -225,7 +225,7 @@ def listen_libinput():
     user = getpass.getuser()
     proglock = open_lock(PROGNAME, user)
     if not proglock:
-        sys.exit(f'{PROGNAME} is already running for {user}, terminating ..')
+        sys.exit(f'\033[91m{PROGNAME} is already running for {user}, terminating ..\033[0m')
 
     # User needs to belong to the input group to access the device
     # "sudo gpasswd -a $USER input" then log out/in
@@ -285,7 +285,7 @@ def read_conf(conffile, defname):
         confpath = Path(conffile)
 
         if not confpath.exists():
-            sys.exit(f'Conf file "{conffile}" does not exist.')
+            sys.exit(f'\033[91mConf file "{conffile}" does not exist.\033[0m')
     else:
         for confdir in CONFDIRS:
             confpath = Path(confdir, defname)
@@ -293,7 +293,7 @@ def read_conf(conffile, defname):
             if confpath.exists():
                 break
             else:
-                sys.exit('No file {defname} in {" or ".join([unexpanduser(Path(c)) for c in CONFDIRS])}.')
+                sys.exit('\033[91mNo file {defname} in {" or ".join([unexpanduser(Path(c)) for c in CONFDIRS])}.\033[0m')
 
     # Hide any personal user dir/names from diag output
     confname = unexpanduser(confpath)
@@ -338,7 +338,7 @@ def get_conf(conffile, confname):
             errmsg = get_conf_line(line)
 
             if errmsg:
-                sys.exit(f'Error at line {num} in file {confname}:\n>> {line} <<\n{errmsg}.')
+                sys.exit(f'\033[91mError at line {num} in file {confname}:\n>> {line} <<\n{errmsg}.\033[0m')
 
 def get_conf_line(line):
     'Process a single line in conf file'
@@ -528,8 +528,7 @@ class HANDLER:
 
         if args.verbose:
             print(f'{self.path} {data}')
-            print('  ', command)
-            print('')
+            print(f'\033[1m\033[92m  {command}\033[0m')
 
         if not args.debug:
             run(shlex.split(command))
@@ -728,7 +727,7 @@ class HANDLER:
 
         if not fields:
             if args.debug:
-                print(f'Error parsing event {event[0]} params: {params}', file = sys.stderr)
+                print(f'\033[93mError parsing event {event[0]} params: {params}\033[0m', file = sys.stderr)
             return
 
         fields = fields.groupdict()
@@ -740,7 +739,7 @@ class HANDLER:
         answer = self.LISTENERS[event[0]](event[1:], time, **fields)
         if answer:
             if args.debug and 'debug' in list(answer):
-                print(answer['debug'], file = sys.stderr)
+                print(f'\033[93m{answer['debug']}\033[0m', file = sys.stderr)
             if args.verbose and 'verbose' in list(answer):
                 print(answer['verbose'])
 
@@ -941,12 +940,12 @@ def main():
 
         # Something very wrong with libinput output has happened
         if not fields:
-            sys.exit(f'Error parsing libinput line: {line}')
+            sys.exit(f'\033[91mError parsing libinput line: {line}\033[0m')
 
         device, event, time, params = fields.groupdict().values()
 
         if args.raw:
-            print(f'Raw libinput line: {line}')
+            print(f'\033[95m{line}\033[0m')
             print(f'Parsed libinput line: {device=} {event=} {time=}')
 
         # Create a handler for every device
