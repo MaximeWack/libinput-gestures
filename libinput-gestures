@@ -25,6 +25,9 @@ CONFNAME = f'{PROGNAME}.conf'
 USERDIR = os.getenv('XDG_CONFIG_HOME', os.path.expanduser('~/.config'))
 CONFDIRS = (USERDIR, '/etc')
 
+conf_prefix = []
+wclass_prefix = None
+
 class OPTIONS:
     'Singleton class for storing options'
 
@@ -139,9 +142,10 @@ class ACTIONS:
         fingers = int(fingers)
         modifier = modifier or 'end'
 
+        wclass = wclass and wclass[1:-1] or wclass_prefix
+
         self.parsed_actions.append(f'{restrict or '':7} {hold or ''}{action:6} {fingers} {motion:5} {modifier:10} {command:60} {wclass or '':>}')
 
-        wclass = wclass and wclass[1:-1]
         restrict = [restrict] if restrict else ['touch', 'gesture']
 
         for r in restrict:
@@ -316,16 +320,19 @@ def read_conf(conffile, defname):
 
 def get_conf(conffile, confname):
     'Read given configuration file and store internal actions etc'
-    conf_comment_re = re.compile(r"""
-        ^\# |                                  # Line starts with a comment
-        ^\[[^\[\]]+\]\s*                       # Line is a section header
-    """, flags = re.VERBOSE)
+    global wclass_prefix
 
     with conffile.open() as fp:
         for num, line in enumerate(fp, 1):
             line = line.expandtabs(2).rstrip()
 
-            if not line or conf_comment_re.match(line):
+            # comments
+            line = re.sub(r"\s*#.*$", "", line)
+            if not line.strip():
+                continue
+
+            if re.match(r"^\[.*\]$", line.strip()):
+                wclass_prefix = line.strip()[1:-1]
                 continue
 
             errmsg = get_conf_line(line)
@@ -333,12 +340,11 @@ def get_conf(conffile, confname):
             if errmsg:
                 sys.exit(f'Error at line {num} in file {confname}:\n>> {line} <<\n{errmsg}.')
 
-conf_prefix = []
-
 def get_conf_line(line):
     'Process a single line in conf file'
     global conf_prefix
 
+    # conf prefix
     # Get current line indentation
     indent = (len(line) - len(line.lstrip(' '))) // 2
 
