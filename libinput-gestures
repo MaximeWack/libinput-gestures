@@ -660,8 +660,10 @@ class HANDLER:
 
             if 'post' in list(self.available_actions):
                 self.run(self.available_actions['post'])
+        else:
+            return self.release(f'No late action for this gesture. Releasing handler')
 
-        return self.release()
+        self.release()
 
     def parse(self, event, time, params):
         'Parse a libinput line and dispatch to the relevant listener'
