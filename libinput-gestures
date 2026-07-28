@@ -773,12 +773,12 @@ class HANDLER:
         'Listener for POINTER lines'
         if event[0] == 'SCROLL' and event[1] == 'FINGER':
             if not self.busy and not self.holding:
-                self.begin('gesture', 'SWIPE', time, 2)
+                return self.begin('gesture', 'SWIPE', time, 2)
 
             if self.busy and vert == '0.00' and horiz == '0.00':
-                self.end(False)
+                return self.end(False)
             else:
-                self.update(time, 2, horiz, vert, None, None)
+                return self.update(time, 2, horiz, vert, None, None)
 
         # BUTTON -> ignore? -> comment regex out so that it is not picked up ?
         # BUTTON : button pressed/released
