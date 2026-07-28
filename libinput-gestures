@@ -489,7 +489,7 @@ class HANDLER:
     def switch(self, switch, state):
         'Handle a switch action'
         if self.busy:
-            return {'debug': f'Handler for device {self.device} is in use (shouldn\'t be possible!)'}
+            return self.release(f'Handler for device {self.device} is in use (shouldn\'t be possible!)')
 
         if self.grab('switch', switch, state):
             self.run(self.actions)
