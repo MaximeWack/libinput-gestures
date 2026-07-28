@@ -373,66 +373,6 @@ def get_conf_line(line):
     else:
         return f'Unavailable action/option {key}'
 
-def center(points):
-    center = [0, 0]
-
-    for point in points:
-        center[0] += point[0]
-        center[1] += point[1]
-
-    return (center[0] / len(points), center[1] / len(points))
-
-def diff(point1, point2):
-    return((point2[0] - point1[0], point2[1] - point1[1]))
-
-def mean_dist(points, center):
-    dist = 0
-
-    for point in points:
-        vec = diff(center, point)
-        dist += math.sqrt(vec[0]**2 + vec[1]**2)
-
-    return dist / len(points)
-
-def norm_cross_prod(x1, y1, x2, y2):
-    return (x1*y2 - x2*y1) / (0.0000001 + math.sqrt(x1**2 + y1**2) * math.sqrt(x2**2 + y2**2))
-
-def calc_angle(startPos, lastPos, startCenter, lastCenter):
-    angle = 0
-    xc1, yc1 = startCenter
-    xc2, yc2 = lastCenter
-
-    for i in range(0, len(startPos)):
-        x1, y1 = startPos[i]
-        x2, y2 = lastPos[i]
-        angle += math.asin(norm_cross_prod(x1 - xc1, y1 - yc1, x2 - xc2, y2 - yc2))
-
-    return angle / len(startPos)
-
-def touch_gesture(startPos, lastPos):
-    startCenter = center(startPos)
-    lastCenter = center(lastPos)
-
-    xrel, yrel = diff(startCenter, lastCenter)
-    dist = math.sqrt(xrel**2 + yrel**2)
-
-    if len(lastPos) > 1:
-        ratio = mean_dist(lastPos, lastCenter) / mean_dist(startPos, startCenter)
-        angle = calc_angle(startPos, lastPos, startCenter, lastCenter) / math.pi * 180
-    else:
-        ratio = 1
-        angle = 0
-
-    if abs(angle) > options.angle_min_threshold:
-        return({'gesture': 'PINCH',
-                'params': [0, 0, 0, 0, ratio, angle]})
-    elif abs(math.log(ratio)) > options.ratio_min_threshold:
-        return({'gesture': 'PINCH',
-                'params': [0, 0, 0, 0, ratio, angle]})
-    else:
-        return({'gesture': 'SWIPE',
-                'params': [0, 0, xrel, yrel]})
-
 # Parsing regexes for libinput events
 params_re = dict(
     LIBINPUT = re.compile(r"""
@@ -854,6 +794,72 @@ class HANDLER:
         finger = int(finger)
         x = x and float(x)
         y = y and float(y)
+
+        def center(points):
+            center = [0, 0]
+
+            for point in points:
+                center[0] += point[0]
+                center[1] += point[1]
+
+            return (center[0] / len(points), center[1] / len(points))
+
+        def diff(point1, point2):
+            return((point2[0] - point1[0], point2[1] - point1[1]))
+
+        def mean_dist(points, center):
+            dist = 0
+
+            for point in points:
+                vec = diff(center, point)
+                dist += math.sqrt(vec[0]**2 + vec[1]**2)
+
+            return dist / len(points)
+
+        def norm_cross_prod(x1, y1, x2, y2):
+            return (x1*y2 - x2*y1) / (0.0000001 + math.sqrt(x1**2 + y1**2) * math.sqrt(x2**2 + y2**2))
+
+        def calc_angle(startPos, lastPos, startCenter, lastCenter):
+            angle = 0
+            xc1, yc1 = startCenter
+            xc2, yc2 = lastCenter
+
+            for i in range(0, len(startPos)):
+                x1, y1 = startPos[i]
+                x2, y2 = lastPos[i]
+                angle += math.asin(norm_cross_prod(x1 - xc1, y1 - yc1, x2 - xc2, y2 - yc2))
+
+            return angle / len(startPos)
+
+        def touch_gesture(startPos, lastPos):
+            startCenter = center(startPos)
+            lastCenter = center(lastPos)
+
+            xrel, yrel = diff(startCenter, lastCenter)
+            dist = math.sqrt(xrel**2 + yrel**2)
+
+            if len(lastPos) > 1:
+                ratio = mean_dist(lastPos, lastCenter) / mean_dist(startPos, startCenter)
+                angle = calc_angle(startPos, lastPos, startCenter, lastCenter) / math.pi * 180
+            else:
+                ratio = 1
+                angle = 0
+
+            if abs(angle) > options.angle_min_threshold:
+                return({'gesture': 'PINCH',
+                        'params': [0, 0, 0, 0, ratio, angle]})
+            elif abs(math.log(ratio)) > options.ratio_min_threshold:
+                return({'gesture': 'PINCH',
+                        'params': [0, 0, 0, 0, ratio, angle]})
+            else:
+                return({'gesture': 'SWIPE',
+                        'params': [0, 0, xrel, yrel]})
+
+        # Should be able so send:
+        # self.hold('touch', BEGIN|END, time, fingers, cancelled)
+        # self.begin('touch', PINCH, time, fingers)
+        # self.update(time, fingers, x, y, ratio, angle)
+        # self.end(cancelled)
 
         # # Stuff for touch
         # nfingers = 0
