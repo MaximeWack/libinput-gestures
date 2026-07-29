@@ -430,7 +430,7 @@ class HANDLER:
 
     def remove(self):
         'Remove the handler for an unplugged device'
-        del(handler[self.device])
+        del(handlers[self.device])
         return {'verbose': f'Removing device  {self.name:50} ({self.device})'}
 
     def grab(self, *items, time = None):
@@ -877,7 +877,7 @@ def main():
     # Listen to libinput debug-events
     cmd = listen_libinput()
 
-    handler = {}
+    handlers = {}
 
     if args.verbose:
         print('LIBINPUT:')
@@ -900,11 +900,11 @@ def main():
             print(f'Parsed libinput line: {device=} {event=} {time=}')
 
         # Create a handler for every device
-        if not handler.get(device):
-            handler[device] = HANDLER(device)
+        if not handlers.get(device):
+            handlers[device] = HANDLER(device)
 
         # Pass the event and params to the handler
-        handler[device].parse(event, time, params)
+        handlers[device].parse(event, time, params)
 
         if args.raw:
             print()
