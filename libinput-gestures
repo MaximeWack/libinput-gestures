@@ -13,6 +13,7 @@ import fcntl
 import platform
 import math
 import signal
+from time import monotonic
 from pathlib import Path
 from packaging.version import Version
 
@@ -447,6 +448,7 @@ class HANDLER:
         self.holding = False
         self.chaining = False
         self.pre = False
+        self.holdtimer = None
 
         self.data = dict(x = 0, y = 0, dx = 0, dy = 0, ratio = 0, dratio = 0, angle = 0, dangle = 0)
         self.actions = {k:v for k, v in actions.actions.items() if k in self.capabilities}
@@ -503,10 +505,24 @@ class HANDLER:
             if self.busy:
                 return self.release(f'Handler for device {self.device} is in use (shouldn\'t be possible!)')
 
-            if not self.grab(device_type, fingers, 'hold', time = time):
+            if self.grab(device_type, fingers, 'hold', time = time):
+                self.holdtimer = monotonic()
+            else:
                 return self.release(f'No hold action with {fingers}_fingers. Releasing handler')
 
-                pass
+        # Fake update event fired by the internal timer to run 'pre' action
+        elif event == 'UPDATE':
+            print("timer")
+            if time - self.start_time > options.hold_min_threshold:
+                self.holdtimer = None
+                if self.actions.get(None):
+                    res = self.actions[None]
+                    self.available_actions = res[self.wclass] if self.wclass in list(res) else res[None]
+
+                    if 'pre' in list(self.available_actions) and not self.pre:
+                        self.run(self.available_actions['pre'])
+                        self.available_actions = None
+                        self.pre = True
 
         elif event == 'END':
             if not self.busy:
@@ -890,27 +906,43 @@ def main():
         line = cmd.stdout.readline().strip()
 
         # Parse libinput output
-        fields = params_re['LIBINPUT'].match(line)
+        if line:
+            fields = params_re['LIBINPUT'].match(line)
 
-        # Something very wrong with libinput output has happened
-        if not fields:
-            sys.exit(f'\033[91mError parsing libinput line: {line}\033[0m')
+            # Something very wrong with libinput output has happened
+            if not fields:
+                sys.exit(f'\033[91mError parsing libinput line: {line}\033[0m')
 
-        device, event, time, params = fields.groupdict().values()
+            device, event, time, params = fields.groupdict().values()
 
-        if args.raw:
-            print(f'\033[95m{line}\033[0m')
-            print(f'Parsed libinput line: {device=} {event=} {time=}')
+            if args.raw:
+                print(f'\033[95m{line}\033[0m')
+                print(f'Parsed libinput line: {device=} {event=} {time=}')
 
-        # Create a handler for every device
-        if not handlers.get(device):
-            handlers[device] = HANDLER(device)
+            # Create a handler for every device
+            if not handlers.get(device):
+                handlers[device] = HANDLER(device)
 
-        # Pass the event and params to the handler
-        handlers[device].parse(event, time, params)
+            # Pass the event and params to the handler
+            handlers[device].parse(event, time, params)
 
-        if args.raw:
-            print()
+            if args.raw:
+                print()
+
+            # Break for holding handlers
+            for _, handler in handlers.items():
+                if handler.holdtimer:
+                    os.set_blocking(cmd.stdout.fileno(), False)
+        else:
+            # Hold update
+            anyholding = False
+            for _, handler in handlers.items():
+                if handler.holdtimer:
+                    anyholding = True
+                    handler.hold(None, 'UPDATE', handler.start_time + (monotonic() - handler.holdtimer), None, None)
+
+            if not anyholding:
+                os.set_blocking(cmd.stdout.fileno(), True)
 
 if __name__ == '__main__':
     main()
