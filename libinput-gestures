@@ -630,14 +630,14 @@ class HANDLER:
             self.motion = None
 
         # Get available actions
-        if self.motion and not self.available_actions:
+        if self.motion:
             res = self.actions[self.gesture][self.motion]
             self.available_actions = res[self.wclass] if self.wclass in list(res) else res[None]
 
         # Run early actions (pre, chain, continuous)
         if self.available_actions:
             # Only register chaining motions while in a chain
-            if self.chaining and 'chain' not in self.available_actions:
+            if self.chaining and 'chain' not in list(self.available_actions):
                 self.motion = None
                 self.available_actions = None
                 return
@@ -657,11 +657,10 @@ class HANDLER:
                 self.data['dratio'] = 0
 
             # Execute chain action and reset prior to determining motion
-            if 'chain' in list(self.available_actions):
+            if 'chain' in list(self.available_actions) and self.motion:
                 self.run(self.available_actions['chain'])
                 self.chaining = True
                 self.motion = None
-                self.available_actions = None
                 self.data = dict(x = 0, y = 0, dx = 0, dy = 0, angle = 0, ratio = 0, dangle = 0, dratio = 0)
 
     def end(self, cancelled):
