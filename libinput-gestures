@@ -636,6 +636,10 @@ class HANDLER:
 
         # Run early actions (pre, chain, continuous)
         if self.available_actions:
+            # Reset motion if only end action to mimic legacy behavior
+            if list(self.available_actions) == ['end']:
+                self.motion = None
+
             # Only register chaining motions while in a chain
             if self.chaining and 'chain' not in list(self.available_actions):
                 self.motion = None
