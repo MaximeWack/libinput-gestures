@@ -391,38 +391,6 @@ def reset(signum = None, frame = None):
     cmd.terminate()
     cmd = listen_libinput()
 
-# Parsing regexes for libinput events
-params_re = dict(
-    LIBINPUT = re.compile(r""".*? (?P<device> event\d+)                  # Device
-                              \s* (?P<event> [A-Z_]+)                    # Event
-                              \s* (?:\d+)?                               # Event number within frame
-                              \s* (\+ (?P<time> \d+\.\d+) s)?            # Time
-                              \s* (?P<params> .*)?                       # Params""", flags = re.VERBOSE),
-
-    DEVICE = re.compile(r"""(?P<name>.*?)                                # Device name
-                            \s* (?P<seat>seat\d \s default)              # Seat
-                            \s* (?P<group>group\d+)                      # Group
-                            \s* (cap:(?P<capabilities>[kpgStT]+))        # Capabilities
-                            \s* (size \s (?P<sizex>\d+) x (?P<sizey>\d+) mm)? """, flags = re.VERBOSE),
-
-    SWITCH = re.compile(r"""switch
-                            \s+ (?P<switch> tablet-mode | lid | keypad-slide) # Switch name
-                            \s* state \s+ (?P<state> 0 | 1)                   # State """, flags = re.VERBOSE),
-
-    TOUCH = re.compile(r"""(?P<finger> \d)?                              # Finger
-                           \s* \( (?P=finger) \)?
-                           \s* ((?P<x> \d+\.\d+) /\s* (?P<y> \d+\.\d+))? # Absolute position 0-100% of width/height """, flags = re.VERBOSE),
-
-    GESTURE = re.compile(r"""(?P<fingers> \d)                                                  # Fingers
-                             \s* (?P<cancelled>cancelled)?
-                             \s* ((?P<x> -? \d+\.\d+) \s* / \s* (?P<y> -? \d+\.\d+))?                                # Absolute position 0-100% of width/height
-                             \s* ( \( \s* (?P<x2> -? \d+\.\d+) \s* / \s* (?P<y2> -? \d+\.\d+) \s* unaccelerated\) )? # Absolute position 0-100% of width/height
-                             \s* ((?P<ratio> \d+\.\d+) \s* @ \s* (?P<angle> -? \d+\.\d+))? """, flags = re.VERBOSE),
-
-    POINTER = re.compile(r"""((?P<x> -? \d+\.\d+) \s* / \s* (?P<y> -? \d+\.\d+))?
-                             (BTN_(?P<button> LEFT | MIDDLE | RIGHT) \s \( \d+ \) \s (?P<state> pressed | released))?
-                             (vert \s ((?P<vert> -?\d+\.\d+) / 0\.0 \*?) \s horiz \s ((?P<horiz> -?\d+\.\d+) / 0\.0 \*?))? """, flags = re.VERBOSE))
-
 class HANDLER:
     'Class for device handler objects'
 
@@ -433,6 +401,38 @@ class HANDLER:
                     p = "pointer", # match to gesture too ? or disregard because we don't want simple pointers ?
                     g = "gesture", # in actions
                     S = "switch") # in actions
+
+    # Parsing regexes for libinput events
+    params_re = dict(
+        LIBINPUT = re.compile(r""".*? (?P<device> event\d+)                  # Device
+                                \s* (?P<event> [A-Z_]+)                    # Event
+                                \s* (?:\d+)?                               # Event number within frame
+                                \s* (\+ (?P<time> \d+\.\d+) s)?            # Time
+                                \s* (?P<params> .*)?                       # Params""", flags = re.VERBOSE),
+
+        DEVICE = re.compile(r"""(?P<name>.*?)                                # Device name
+                                \s* (?P<seat>seat\d \s default)              # Seat
+                                \s* (?P<group>group\d+)                      # Group
+                                \s* (cap:(?P<capabilities>[kpgStT]+))        # Capabilities
+                                \s* (size \s (?P<sizex>\d+) x (?P<sizey>\d+) mm)? """, flags = re.VERBOSE),
+
+        SWITCH = re.compile(r"""switch
+                                \s+ (?P<switch> tablet-mode | lid | keypad-slide) # Switch name
+                                \s* state \s+ (?P<state> 0 | 1)                   # State """, flags = re.VERBOSE),
+
+        TOUCH = re.compile(r"""(?P<finger> \d)?                              # Finger
+                            \s* \( (?P=finger) \)?
+                            \s* ((?P<x> \d+\.\d+) /\s* (?P<y> \d+\.\d+))? # Absolute position 0-100% of width/height """, flags = re.VERBOSE),
+
+        GESTURE = re.compile(r"""(?P<fingers> \d)                                                  # Fingers
+                                \s* (?P<cancelled>cancelled)?
+                                \s* ((?P<x> -? \d+\.\d+) \s* / \s* (?P<y> -? \d+\.\d+))?                                # Absolute position 0-100% of width/height
+                                \s* ( \( \s* (?P<x2> -? \d+\.\d+) \s* / \s* (?P<y2> -? \d+\.\d+) \s* unaccelerated\) )? # Absolute position 0-100% of width/height
+                                \s* ((?P<ratio> \d+\.\d+) \s* @ \s* (?P<angle> -? \d+\.\d+))? """, flags = re.VERBOSE),
+
+        POINTER = re.compile(r"""((?P<x> -? \d+\.\d+) \s* / \s* (?P<y> -? \d+\.\d+))?
+                                (BTN_(?P<button> LEFT | MIDDLE | RIGHT) \s \( \d+ \) \s (?P<state> pressed | released))?
+                                (vert \s ((?P<vert> -?\d+\.\d+) / 0\.0 \*?) \s horiz \s ((?P<horiz> -?\d+\.\d+) / 0\.0 \*?))? """, flags = re.VERBOSE))
 
     def __init__(self, device):
         'Initialize a device handler'
@@ -717,10 +717,10 @@ class HANDLER:
         event = event.split('_')
 
         # Skip the event if the device is disabled, not supported, or empty
-        if not self.enabled or not params_re.get(event[0]) or not params:
+        if not self.enabled or not self.params_re.get(event[0]) or not params:
             return
 
-        fields = params_re[event[0]].match(params)
+        fields = self.params_re[event[0]].match(params)
 
         if not fields:
             if args.debug:
@@ -948,7 +948,7 @@ def main():
 
         # Parse libinput output
         if line:
-            fields = params_re['LIBINPUT'].match(line)
+            fields = HANDLER.params_re['LIBINPUT'].match(line)
 
             # Something very wrong with libinput output has happened
             if not fields:
