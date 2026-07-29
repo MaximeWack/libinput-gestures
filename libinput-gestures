@@ -29,6 +29,7 @@ CONFDIRS = (USERDIR, '/etc')
 conf_prefix = []
 wclass_prefix = None
 cmd = None
+conf_lastmodif = None
 
 class OPTIONS:
     'Singleton class for storing options'
@@ -274,6 +275,8 @@ def unexpanduser(cfile):
 
 def read_conf(conffile, defname):
     'Search for configuration file. Use file given as command line argument, else look for file in search dir order'
+    global conf_lastmodif
+
     if conffile:
         confpath = Path(conffile)
 
@@ -284,9 +287,12 @@ def read_conf(conffile, defname):
             confpath = Path(confdir, defname)
 
             if confpath.exists():
+                args.conffile = confpath
                 break
             else:
                 sys.exit('\033[91mNo file {defname} in {" or ".join([unexpanduser(Path(c)) for c in CONFDIRS])}.\033[0m')
+
+    conf_lastmodif = os.stat(confpath).st_mtime
 
     # Hide any personal user dir/names from diag output
     confname = unexpanduser(confpath)
@@ -981,6 +987,10 @@ def main():
 
             if not anyholding:
                 os.set_blocking(cmd.stdout.fileno(), True)
+
+        # Reload conf if conf file changes
+        if os.stat(args.conffile).st_mtime != conf_lastmodif:
+            reset()
 
 if __name__ == '__main__':
     main()
