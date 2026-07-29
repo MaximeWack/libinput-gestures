@@ -882,9 +882,12 @@ def main():
     if args.verbose:
         print('LIBINPUT:')
 
+    # Ensure stdout it blocking at startup
+    os.set_blocking(cmd.stdout.fileno(), True)
+
     # Sit in a loop forever reading the libinput messages.
-    for line in cmd.stdout:
-        line = line.strip()
+    while True:
+        line = cmd.stdout.readline().strip()
 
         # Parse libinput output
         fields = params_re['LIBINPUT'].match(line)
