@@ -512,7 +512,6 @@ class HANDLER:
 
         # Fake update event fired by the internal timer to run 'pre' action
         elif event == 'UPDATE':
-            print("timer")
             if time - self.start_time > options.hold_min_threshold:
                 self.holdtimer = None
                 if self.actions.get(None):
