@@ -228,8 +228,6 @@ def listen_libinput():
                            bufsize = 1,
                            universal_newlines = True)
 
-    # Avoid producing zombie processes
-    signal.signal(signal.SIGCHLD, signal.SIG_IGN)
     signal.signal(signal.SIGUSR1, reset)
 
     return cmd
