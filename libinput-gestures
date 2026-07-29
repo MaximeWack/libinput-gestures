@@ -561,7 +561,7 @@ class HANDLER:
                 return self.release(f'No action for gesture with {fingers} fingers. Releasing handler')
 
         # Get gestures that can trigger actions
-        self.available_gestures = {k for k, v in self.actions.items() if k != "apps" and not {self.wclass, None}.isdisjoint(v['apps'])}
+        self.available_gestures = {k for k, v in self.actions.items() if k != "apps" and k != None and not {self.wclass, None}.isdisjoint(v['apps'])}
 
         # Skip if only HOLD gestures registered
         if self.available_gestures == ['hold']:
