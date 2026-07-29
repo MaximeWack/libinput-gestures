@@ -15,16 +15,13 @@ import math
 import signal
 from time import monotonic
 from pathlib import Path
-from packaging.version import Version
 
-PROGPATH = Path(sys.argv[0])
-PROGNAME = PROGPATH.stem
+PROGNAME = Path(sys.argv[0]).stem
 
 # Conf file containing gesture commands.
 # Search first for user file then system file.
 CONFNAME = f'{PROGNAME}.conf'
-USERDIR = os.getenv('XDG_CONFIG_HOME', os.path.expanduser('~/.config'))
-CONFDIRS = (USERDIR, '/etc')
+CONFDIRS = (os.getenv('XDG_CONFIG_HOME', os.path.expanduser('~/.config')), '/etc')
 
 conf_prefix = []
 wclass_prefix = None
