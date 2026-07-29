@@ -356,9 +356,9 @@ def get_conf_line(line):
         hold = 'hold+'
         key = key[5:]
 
-    if key in list(options.available):
+    if key in options.available:
         return options.set(key, argslist)
-    elif key in list(actions.available):
+    elif key in actions.available:
         return actions.parse(restrict, hold, key, argslist)
     else:
         return f'Unavailable action/option {key}'
@@ -419,7 +419,7 @@ class HANDLER:
     def add(self, name, capabilities, sizex, sizey):
         'Populate handler parameters and decide if it\'s enabled'
         self.name = name
-        self.capabilities = {v for k, v in self.cap_dict.items() if k in list(capabilities)}
+        self.capabilities = {v for k, v in self.cap_dict.items() if k in capabilities}
         self.size = (sizex, sizey)
 
         self.release()
@@ -517,9 +517,9 @@ class HANDLER:
                 self.holdtimer = None
                 if self.actions.get(None):
                     res = self.actions[None]
-                    self.available_actions = res[self.wclass] if self.wclass in list(res) else res[None]
+                    self.available_actions = res[self.wclass] if self.wclass in res else res[None]
 
-                    if 'pre' in list(self.available_actions) and not self.pre:
+                    if 'pre' in self.available_actions and not self.pre:
                         self.run(self.available_actions['pre'])
                         self.available_actions = None
                         self.pre = True
@@ -543,8 +543,8 @@ class HANDLER:
                     if not self.advance(None):
                         return self.release(f'No action for holding {fingers} fingers. Releasing handler')
 
-                    self.available_actions = self.actions[self.wclass] if self.wclass in list(self.actions) else self.actions[None]
-                    if 'end' in list(self.available_actions):
+                    self.available_actions = self.actions[self.wclass] if self.wclass in self.actions else self.actions[None]
+                    if 'end' in self.available_actions:
                         self.run(self.available_actions['end'])
                         self.release()
                     else:
@@ -632,7 +632,7 @@ class HANDLER:
         # Get available actions
         if self.motion:
             res = self.actions[self.gesture][self.motion]
-            self.available_actions = res[self.wclass] if self.wclass in list(res) else res[None]
+            self.available_actions = res[self.wclass] if self.wclass in res else res[None]
 
         # Run early actions (pre, chain, continuous)
         if self.available_actions:
@@ -641,18 +641,18 @@ class HANDLER:
                 self.motion = None
 
             # Only register chaining motions while in a chain
-            if self.chaining and 'chain' not in list(self.available_actions):
+            if self.chaining and 'chain' not in self.available_actions:
                 self.motion = None
                 self.available_actions = None
                 return
 
             # Execute pre action only once
-            if 'pre' in list(self.available_actions) and not self.pre:
+            if 'pre' in self.available_actions and not self.pre:
                 self.run(self.available_actions['pre'])
                 self.pre = True
 
             # Execute continuous action every timer tick and reset time and delta data
-            if 'continuous' in list(self.available_actions) and time - self.start_time > options.update_timer:
+            if 'continuous' in self.available_actions and time - self.start_time > options.update_timer:
                 self.run(self.available_actions['continuous'])
                 self.start_time = time
                 self.data['dx'] = 0
@@ -661,7 +661,7 @@ class HANDLER:
                 self.data['dratio'] = 0
 
             # Execute chain action and reset prior to determining motion
-            if 'chain' in list(self.available_actions) and self.motion:
+            if 'chain' in self.available_actions and self.motion:
                 self.run(self.available_actions['chain'])
                 self.chaining = True
                 self.motion = None
@@ -674,10 +674,10 @@ class HANDLER:
 
         # Run late actions (end, post)
         if self.available_actions:
-            if 'end' in list(self.available_actions) and not cancelled:
+            if 'end' in self.available_actions and not cancelled:
                 self.run(self.available_actions['end'])
 
-            if 'post' in list(self.available_actions):
+            if 'post' in self.available_actions:
                 self.run(self.available_actions['post'])
         else:
             return self.release(f'No late action for this gesture. Releasing handler')
@@ -708,9 +708,9 @@ class HANDLER:
         # Dispatch to the relevant listener
         answer = self.LISTENERS[event[0]](event[1:], time, **fields)
         if answer:
-            if args.debug and 'debug' in list(answer):
+            if args.debug and 'debug' in answer:
                 print(f'\033[93m{answer['debug']}\033[0m', file = sys.stderr)
-            if args.verbose and 'verbose' in list(answer):
+            if args.verbose and 'verbose' in answer:
                 print(answer['verbose'])
 
     def listener_device(self, event, time, name, seat, group, capabilities, sizex, sizey):
