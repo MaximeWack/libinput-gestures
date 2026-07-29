@@ -28,6 +28,7 @@ CONFDIRS = (USERDIR, '/etc')
 
 conf_prefix = []
 wclass_prefix = None
+cmd = None
 
 class OPTIONS:
     'Singleton class for storing options'
@@ -67,11 +68,12 @@ class OPTIONS:
 
     instance = None
 
-    def __new__(cls):
+    def __new__(self):
         'Ensure single instance'
-        if cls.instance is None:
-            cls.instance = super().__new__(cls)
-            return cls.instance
+        if self.instance is None:
+            self.instance = super().__new__(self)
+
+        return self.instance
 
 # Create the singleton options object
 options = OPTIONS()
@@ -181,11 +183,17 @@ class ACTIONS:
 
     instance = None
 
-    def __new__(cls):
+    def __new__(self):
         'Ensure single instance'
-        if cls.instance is None:
-            cls.instance = super().__new__(cls)
-            return cls.instance
+        if self.instance is None:
+            self.instance = super().__new__(self)
+        # Reset if re-creating
+        else:
+            self.conf_re = {}
+            self.actions = {}
+            self.parsed_actions = []
+
+        return self.instance
 
 actions = ACTIONS()
 
@@ -222,6 +230,7 @@ def listen_libinput():
 
     # Avoid producing zombie processes
     signal.signal(signal.SIGCHLD, signal.SIG_IGN)
+    signal.signal(signal.SIGUSR1, reset)
 
     return cmd
 
@@ -362,6 +371,22 @@ def get_conf_line(line):
         return actions.parse(restrict, hold, key, argslist)
     else:
         return f'Unavailable action/option {key}'
+
+def reset(signum = None, frame = None):
+    global actions, handlers, cmd, conf_prefix, wclass_prefix
+
+    # Reset handlers and read_conf prefixes
+    handlers = {}
+    conf_prefix = []
+    wclass_prefix = None
+
+    # Reset actions and re-read from conf
+    actions = ACTIONS()
+    read_conf(args.conffile, CONFNAME)
+
+    # Reset libinput
+    cmd.terminate()
+    cmd = listen_libinput()
 
 # Parsing regexes for libinput events
 params_re = dict(
@@ -880,6 +905,8 @@ class HANDLER:
     #             ready = True
 
 def main():
+    global cmd, handlers
+
     # Set up command line arguments
     get_options()
 
