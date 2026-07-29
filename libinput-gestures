@@ -202,33 +202,35 @@ args = None
 def open_lock(*args):
     'Create a lock based on given list of arguments'
     # We use exclusive assess to a file for this
-    fp = Path('/tmp', '-'.join(args) + '.lock').open('w')
+    fp = Path('/tmp', '-'.join(args) + '.lock').open('a')
 
+    # Acquire lock and write current pid
     try:
         fcntl.lockf(fp, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except IOError:
+        fpid = Path('/tmp', '-'.join(args) + '.lock').open('r')
+        running_pid = int(fpid.readline())
+        os.kill(running_pid, signal.SIGUSR1)
+        fpid.close()
         return None
+
+    fp.close()
+
+    fp = Path('/tmp', '-'.join(args) + '.lock').open('w')
+    fcntl.lockf(fp, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    fp.write(str(os.getpid()))
+    fp.flush()
 
     return fp
 
 def listen_libinput():
     'Run libinput debug-events and listen to its output'
-    # Make sure only one instance running for current user
-    user = getpass.getuser()
-    proglock = open_lock(PROGNAME, user)
-    if not proglock:
-        sys.exit(f'\033[91m{PROGNAME} is already running for {user}, terminating ..\033[0m')
-
     # User needs to belong to the input group to access the device
     # "sudo gpasswd -a $USER input" then log out/in
-    command = f'stdbuf -oL -- libinput debug-events'
-
-    cmd = subprocess.Popen(shlex.split(command),
+    cmd = subprocess.Popen(shlex.split(f'stdbuf -oL -- libinput debug-events'),
                            stdout = subprocess.PIPE,
                            bufsize = 1,
                            universal_newlines = True)
-
-    signal.signal(signal.SIGUSR1, reset)
 
     return cmd
 
@@ -904,6 +906,15 @@ class HANDLER:
 
 def main():
     global cmd, handlers
+
+    # Make sure only one instance running for current user
+    user = getpass.getuser()
+    proglock = open_lock(PROGNAME, user)
+    if not proglock:
+        sys.exit(f'\033[91m{PROGNAME} is already running for {user}, reloading conf')
+
+    # Restart when receiving SIGUSR1
+    signal.signal(signal.SIGUSR1, reset)
 
     # Set up command line arguments
     get_options()
