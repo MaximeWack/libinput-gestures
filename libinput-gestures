@@ -99,7 +99,7 @@ class ACTIONS:
                                'command'  : r'[^\[\]]+',
                                'wclass?'   : r'\[.*\]'},
                      hold =   {'fingers' : r'\d',
-                               'modifier?': ('pre', 'end'),
+                               'modifier?': ('pre', 'continuous', 'end'),
                                'command'  : r'[^\[\]]+',
                                'wclass?'   : r'\[.*\]'})
 
@@ -542,10 +542,16 @@ class HANDLER:
 
                 if self.actions.get(None):
                     res = self.actions[None]
-                    available_actions = res[self.wclass] if self.wclass in res else res[None]
+                    self.available_actions = res[self.wclass] if self.wclass in res else res[None]
 
-                    if 'pre' in available_actions:
-                        self.run(available_actions['pre'])
+                if self.available_actions:
+                    if 'pre' in self.available_actions and 'pre' in self.state:
+                        self.run(self.available_actions['pre'])
+                        self.state.remove('pre')
+
+                    if 'continuous' in self.available_actions and time - self.start_time > options.update_timer:
+                        self.run(self.available_actions['continuous'])
+                        self.start_time = time
 
         elif event == 'END':
             print(f'{device_type} hold {event} with {fingers} fingers {'(cancelled)' if cancelled else ''}')
@@ -561,16 +567,11 @@ class HANDLER:
                     if list(self.actions) == [None]:
                         return self.release(f'No hold+ action. Releasing handler')
                 # Simple hold
+                elif self.available_actions and 'end' in self.available_actions:
+                    self.run(self.available_actions['end'])
+                    self.release()
                 else:
-                    if not self.advance(None):
-                        return self.release(f'No action for holding {fingers} fingers. Releasing handler')
-
-                    self.available_actions = self.actions[self.wclass] if self.wclass in self.actions else self.actions[None]
-                    if 'end' in self.available_actions:
-                        self.run(self.available_actions['end'])
-                        self.release()
-                    else:
-                        return self.release(f'No end action for holding {fingers} fingers. Releasing handler')
+                    return self.release(f'No end action for holding {fingers} fingers. Releasing handler')
 
     def begin(self, device_type, gesture, time, fingers):
         'Handle the begin event of all other actions'
