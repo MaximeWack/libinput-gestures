@@ -138,7 +138,7 @@ class ACTIONS:
         self.parsed_actions.append(f'switch {toggle:12} {state:3} {command}')
         self.build_path('switch', toggle, state, command = command)
 
-    def add(self, restrict, hold, action, fingers, wclass, modifier, command, motion = None):
+    def add(self, restrict, hold, action, fingers, wclass, modifier, command, motion = 'hold'):
         'Add all other actions'
         fingers = int(fingers)
         modifier = modifier or 'end'
@@ -536,7 +536,7 @@ class HANDLER:
             self.state.add(gesture)
 
         # Get gestures that can trigger actions
-        self.available_gestures = {k for k, v in self.actions.items() if k != "apps" and k != None and not {self.wclass, None}.isdisjoint(v['apps'])}
+        self.available_gestures = {k for k, v in self.actions.items() if k != "apps" and not {self.wclass, None}.isdisjoint(v.get('apps') or set())}
 
         # Skip if libinput says the gesture is a swipe and there's no swipe action
         if gesture == 'SWIPE':
@@ -559,8 +559,8 @@ class HANDLER:
 
         if 'pending' in self.state and time - self.start_time > options.hold_min_threshold:
             self.state.remove('pending')
-            if self.actions.get(None):
-                res = self.actions[None]
+            if self.actions.get('hold'):
+                res = self.actions['hold']
                 self.available_actions = res[self.wclass] if self.wclass in res else res[None]
 
         # Update handler data
@@ -660,7 +660,7 @@ class HANDLER:
             return self.release(f'Hold event not lasting long enough')
 
         if 'HOLD' in self.state and cancelled:
-            if list(self.actions) == [None]:
+            if list(self.actions) == ['hold']:
                 return self.release(f'No hold+ action. Releasing handler')
             else:
                 return
