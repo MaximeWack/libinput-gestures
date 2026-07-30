@@ -405,10 +405,10 @@ class HANDLER:
     # Parsing regexes for libinput events
     params_re = dict(
         LIBINPUT = re.compile(r""".*? (?P<device> event\d+)                  # Device
-                                \s* (?P<event> [A-Z_]+)                    # Event
-                                \s* (?:\d+)?                               # Event number within frame
-                                \s* (\+ (?P<time> \d+\.\d+) s)?            # Time
-                                \s* (?P<params> .*)?                       # Params""", flags = re.VERBOSE),
+                                  \s* (?P<event> [A-Z_]+)                    # Event
+                                  \s* (?:\d+)?                               # Event number within frame
+                                  \s* (\+ (?: \d+\.\d+) s)?                  # Time
+                                  \s* (?P<params> .*)?                       # Params""", flags = re.VERBOSE),
 
         DEVICE = re.compile(r"""(?P<name>.*?)                                # Device name
                                 \s* (?P<seat>seat\d \s default)              # Seat
@@ -462,26 +462,21 @@ class HANDLER:
         del(handlers[self.device])
         return {'verbose': f'Removing device  {self.name:50} ({self.device})'}
 
-    def grab(self, *items, time = None):
+    def grab(self, *items, state):
         'Grab a handler and set its current device type, the focused window class, and the starting time'
-        self.busy = True
+        self.state = state
 
         self.wclass = subprocess.run(['xdotool', 'getwindowfocus', 'getwindowclassname'], capture_output = True).stdout.decode('utf-8').strip()
-        self.start_time = time
+        self.start_time = monotonic()
         return self.advance(*items)
 
     def release(self, message = None):
         'Release a handler and reset its state'
-        self.busy = False
-        self.holding = False
-        self.chaining = False
-        self.pre = False
-        self.holdtimer = None
+        self.state = False
 
         self.data = dict(x = 0, y = 0, dx = 0, dy = 0, ratio = 0, dratio = 0, angle = 0, dangle = 0)
         self.actions = {k:v for k, v in actions.actions.items() if k in self.capabilities}
 
-        self.start_time = None
         self.gesture = None
         self.motion = None
         self.wclass = None
@@ -518,10 +513,10 @@ class HANDLER:
 
     def switch(self, switch, state):
         'Handle a switch action'
-        if self.busy:
+        if self.state:
             return self.release(f'Handler for device {self.device} is in use (shouldn\'t be possible!)')
 
-        if self.grab('switch', switch, state):
+        if self.grab('switch', switch, state, state = 'switch'):
             self.run(self.actions)
             self.release()
         else:
@@ -530,41 +525,36 @@ class HANDLER:
     def hold(self, device_type, event, time, fingers, cancelled):
         'Handle a hold action'
         if event == 'BEGIN':
-            if self.busy:
+            if self.state:
                 return self.release(f'Handler for device {self.device} is in use (shouldn\'t be possible!)')
 
-            if self.grab(device_type, fingers, 'hold', time = time):
-                self.holdtimer = monotonic()
-            else:
+            if not self.grab(device_type, fingers, 'hold', state = 'preholding'):
                 return self.release(f'No hold action with {fingers}_fingers. Releasing handler')
 
         # Fake update event fired by the internal timer to run 'pre' action
         elif event == 'UPDATE':
             if time - self.start_time > options.hold_min_threshold:
-                self.holdtimer = None
+                self.state = 'holding'
                 if self.actions.get(None):
                     res = self.actions[None]
-                    self.available_actions = res[self.wclass] if self.wclass in res else res[None]
+                    available_actions = res[self.wclass] if self.wclass in res else res[None]
 
-                    if 'pre' in self.available_actions and not self.pre:
-                        self.run(self.available_actions['pre'])
-                        self.available_actions = None
-                        self.pre = True
+                    if 'pre' in available_actions:
+                        self.run(available_actions['pre'])
 
         elif event == 'END':
-            if not self.busy:
+            print(f'{device_type} hold {event} with {fingers} fingers {'(cancelled)' if cancelled else ''}')
+            if not self.state:
                 return {'verbose': 'Not listening to HOLD event end here'}
 
             # Hold didn't go over the set threshold
-            if time - self.start_time < options.hold_min_threshold:
+            if self.state == 'preholding':
                 return self.release(f'Hold event not lasting long enough')
             else:
                 # Cancelled hold (hold+ if exists)
                 if cancelled:
                     if list(self.actions) == [None]:
                         return self.release(f'No hold+ action. Releasing handler')
-                    else:
-                        self.holding = True
                 # Simple hold
                 else:
                     if not self.advance(None):
@@ -580,11 +570,11 @@ class HANDLER:
     def begin(self, device_type, gesture, time, fingers):
         'Handle the begin event of all other actions'
         # Only grab handler if not in a hold+ gesture
-        if not self.holding:
-            if self.busy:
+        if self.state != 'holding':
+            if self.state:
                 return self.release(f'Handler for device {self.device} is busy (shouldn\'t be possible!)')
 
-            if not self.grab(device_type, fingers, time = time):
+            if not self.grab(device_type, fingers, state = 'pre'):
                 return self.release(f'No action for gesture with {fingers} fingers. Releasing handler')
 
         # Get gestures that can trigger actions
@@ -603,7 +593,7 @@ class HANDLER:
 
     def update(self, time, fingers, x, y, ratio, angle):
         'Handle the update event of all other actions'
-        if not self.busy:
+        if not self.state:
             return {'verbose': 'Not listening to update events for this gesture'}
 
         # Update handler data
@@ -650,7 +640,7 @@ class HANDLER:
                      else None
 
         # Register motion only if over *_chain_threshold
-        if self.chaining and \
+        if self.state == 'chain' and \
             ((self.gesture == 'swipe'  and math.sqrt(x ** 2 + y ** 2) < options.swipe_chain_threshold) or \
              (self.gesture == 'pinch'  and abs(ratio) < options.ratio_chain_threshold) or \
              (self.gesture == 'rotate' and abs(angle) < options.angle_chain_threshold)):
@@ -668,15 +658,15 @@ class HANDLER:
                 self.motion = None
 
             # Only register chaining motions while in a chain
-            if self.chaining and 'chain' not in self.available_actions:
+            if self.state == 'chain' and 'chain' not in self.available_actions:
                 self.motion = None
                 self.available_actions = None
                 return
 
             # Execute pre action only once
-            if 'pre' in self.available_actions and not self.pre:
+            if 'pre' in self.available_actions and self.state == 'pre':
                 self.run(self.available_actions['pre'])
-                self.pre = True
+                self.state = 'gesture'
 
             # Execute continuous action every timer tick and reset time and delta data
             if 'continuous' in self.available_actions and time - self.start_time > options.update_timer:
@@ -690,13 +680,13 @@ class HANDLER:
             # Execute chain action and reset prior to determining motion
             if 'chain' in self.available_actions and self.motion:
                 self.run(self.available_actions['chain'])
-                self.chaining = True
+                self.state = 'chain'
                 self.motion = None
                 self.data = dict(x = 0, y = 0, dx = 0, dy = 0, angle = 0, ratio = 0, dangle = 0, dratio = 0)
 
     def end(self, cancelled):
         'Handle end event for all actions'
-        if not self.busy:
+        if not self.state:
             return self.release(f'Skipping end for device {self.device} as there isn\'t anything to do with it')
 
         # Run late actions (end, post)
@@ -711,9 +701,8 @@ class HANDLER:
 
         self.release()
 
-    def parse(self, event, time, params):
+    def parse(self, event, params):
         'Parse a libinput line and dispatch to the relevant listener'
-        time = time and float(time)
         event = event.split('_')
 
         # Skip the event if the device is disabled, not supported, or empty
@@ -733,7 +722,7 @@ class HANDLER:
             print(f'Parsed event: {fields}')
 
         # Dispatch to the relevant listener
-        answer = self.LISTENERS[event[0]](event[1:], time, **fields)
+        answer = self.LISTENERS[event[0]](event[1:], monotonic(), **fields)
         if answer:
             if args.debug and 'debug' in answer:
                 print(f'\033[93m{answer['debug']}\033[0m', file = sys.stderr)
@@ -774,10 +763,10 @@ class HANDLER:
     def listener_pointer(self, event, time, x, y, button, state, vert, horiz):
         'Listener for POINTER lines'
         if event[0] == 'SCROLL' and event[1] == 'FINGER':
-            if not self.busy and not self.holding:
+            if not self.state and not self.holding:
                 return self.begin('gesture', 'SWIPE', time, 2)
 
-            if self.busy and vert == '0.00' and horiz == '0.00':
+            if self.state and vert == '0.00' and horiz == '0.00':
                 return self.end(False)
             else:
                 return self.update(time, 2, horiz, vert, None, None)
@@ -954,33 +943,33 @@ def main():
             if not fields:
                 sys.exit(f'\033[91mError parsing libinput line: {line}\033[0m')
 
-            device, event, time, params = fields.groupdict().values()
+            device, event, params = fields.groupdict().values()
 
             if args.raw:
                 print(f'\033[95m{line}\033[0m')
-                print(f'Parsed libinput line: {device=} {event=} {time=}')
+                print(f'Parsed libinput line: {device=} {event=}')
 
             # Create a handler for every device
             if not handlers.get(device):
                 handlers[device] = HANDLER(device)
 
             # Pass the event and params to the handler
-            handlers[device].parse(event, time, params)
+            handlers[device].parse(event, params)
 
             if args.raw:
                 print()
 
             # Break for holding handlers
             for _, handler in handlers.items():
-                if handler.holdtimer:
+                if handler.state == 'preholding':
                     os.set_blocking(cmd.stdout.fileno(), False)
         else:
             # Hold update
             anyholding = False
             for _, handler in handlers.items():
-                if handler.holdtimer:
+                if handler.state == 'preholding':
                     anyholding = True
-                    handler.hold(None, 'UPDATE', handler.start_time + (monotonic() - handler.holdtimer), None, None)
+                    handler.hold('timer', 'UPDATE', monotonic(), None, None)
 
             if not anyholding:
                 os.set_blocking(cmd.stdout.fileno(), True)
