@@ -464,7 +464,10 @@ class HANDLER:
 
     def grab(self, *items, state):
         'Grab a handler and set its current device type, the focused window class, and the starting time'
-        self.state = state
+        if type(state).__name__ == 'set':
+            self.state = state
+        elif type(state).__name__ == 'str':
+            self.state = {state}
 
         self.wclass = subprocess.run(['xdotool', 'getwindowfocus', 'getwindowclassname'], capture_output = True).stdout.decode('utf-8').strip()
         self.start_time = monotonic()
@@ -472,7 +475,7 @@ class HANDLER:
 
     def release(self, message = None):
         'Release a handler and reset its state'
-        self.state = False
+        self.state = set()
 
         self.data = dict(x = 0, y = 0, dx = 0, dy = 0, ratio = 0, dratio = 0, angle = 0, dangle = 0)
         self.actions = {k:v for k, v in actions.actions.items() if k in self.capabilities}
@@ -528,13 +531,15 @@ class HANDLER:
             if self.state:
                 return self.release(f'Handler for device {self.device} is in use (shouldn\'t be possible!)')
 
-            if not self.grab(device_type, fingers, 'hold', state = 'preholding'):
+            if not self.grab(device_type, fingers, 'hold', state = {'pre', 'holding', 'pending'}):
                 return self.release(f'No hold action with {fingers}_fingers. Releasing handler')
 
         # Fake update event fired by the internal timer to run 'pre' action
         elif event == 'UPDATE':
             if time - self.start_time > options.hold_min_threshold:
-                self.state = 'holding'
+                if 'pending' in self.state:
+                    self.state.remove('pending')
+
                 if self.actions.get(None):
                     res = self.actions[None]
                     available_actions = res[self.wclass] if self.wclass in res else res[None]
@@ -548,7 +553,7 @@ class HANDLER:
                 return {'verbose': 'Not listening to HOLD event end here'}
 
             # Hold didn't go over the set threshold
-            if self.state == 'preholding':
+            if 'pending' in self.state:
                 return self.release(f'Hold event not lasting long enough')
             else:
                 # Cancelled hold (hold+ if exists)
@@ -570,12 +575,15 @@ class HANDLER:
     def begin(self, device_type, gesture, time, fingers):
         'Handle the begin event of all other actions'
         # Only grab handler if not in a hold+ gesture
-        if self.state != 'holding':
+        if not 'holding' in self.state:
             if self.state:
                 return self.release(f'Handler for device {self.device} is busy (shouldn\'t be possible!)')
 
-            if not self.grab(device_type, fingers, state = 'pre'):
+            if not self.grab(device_type, fingers, state = {'pre', 'gesture'}):
                 return self.release(f'No action for gesture with {fingers} fingers. Releasing handler')
+        else:
+            self.state.remove('holding')
+            self.state.add('gesture')
 
         # Get gestures that can trigger actions
         self.available_gestures = {k for k, v in self.actions.items() if k != "apps" and k != None and not {self.wclass, None}.isdisjoint(v['apps'])}
@@ -640,7 +648,7 @@ class HANDLER:
                      else None
 
         # Register motion only if over *_chain_threshold
-        if self.state == 'chain' and \
+        if 'chain' in self.state and \
             ((self.gesture == 'swipe'  and math.sqrt(x ** 2 + y ** 2) < options.swipe_chain_threshold) or \
              (self.gesture == 'pinch'  and abs(ratio) < options.ratio_chain_threshold) or \
              (self.gesture == 'rotate' and abs(angle) < options.angle_chain_threshold)):
@@ -657,16 +665,16 @@ class HANDLER:
             if list(self.available_actions) == ['end']:
                 self.motion = None
 
-            # Only register chaining motions while in a chain
-            if self.state == 'chain' and 'chain' not in self.available_actions:
+            # Discard non chaining motions when chaining
+            if 'chain' in self.state and 'chain' not in self.available_actions:
                 self.motion = None
                 self.available_actions = None
                 return
 
             # Execute pre action only once
-            if 'pre' in self.available_actions and self.state == 'pre':
+            if 'pre' in self.available_actions and 'pre' in self.state:
                 self.run(self.available_actions['pre'])
-                self.state = 'gesture'
+                self.state.remove('pre')
 
             # Execute continuous action every timer tick and reset time and delta data
             if 'continuous' in self.available_actions and time - self.start_time > options.update_timer:
@@ -680,7 +688,7 @@ class HANDLER:
             # Execute chain action and reset prior to determining motion
             if 'chain' in self.available_actions and self.motion:
                 self.run(self.available_actions['chain'])
-                self.state = 'chain'
+                self.state.add('chain')
                 self.motion = None
                 self.data = dict(x = 0, y = 0, dx = 0, dy = 0, angle = 0, ratio = 0, dangle = 0, dratio = 0)
 
@@ -763,7 +771,7 @@ class HANDLER:
     def listener_pointer(self, event, time, x, y, button, state, vert, horiz):
         'Listener for POINTER lines'
         if event[0] == 'SCROLL' and event[1] == 'FINGER':
-            if not self.state and not self.holding:
+            if not self.state:
                 return self.begin('gesture', 'SWIPE', time, 2)
 
             if self.state and vert == '0.00' and horiz == '0.00':
@@ -961,13 +969,13 @@ def main():
 
             # Break for holding handlers
             for _, handler in handlers.items():
-                if handler.state == 'preholding':
+                if 'holding' in handler.state:
                     os.set_blocking(cmd.stdout.fileno(), False)
         else:
             # Hold update
             anyholding = False
             for _, handler in handlers.items():
-                if handler.state == 'preholding':
+                if 'holding' in handler.state:
                     anyholding = True
                     handler.hold('timer', 'UPDATE', monotonic(), None, None)
 
