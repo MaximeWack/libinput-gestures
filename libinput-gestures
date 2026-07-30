@@ -442,7 +442,7 @@ class HANDLER:
                               GESTURE = self.listener_gesture,
                               SWITCH  = self.listener_switch,
                               POINTER = self.listener_pointer)
-        self.enabled = True
+        self.state = set()
 
     def add(self, name, capabilities, sizex, sizey):
         'Populate handler parameters and decide if it\'s enabled'
@@ -452,10 +452,7 @@ class HANDLER:
 
         self.release()
 
-        # If no action relevant, disable handler
-        self.enabled = True if self.actions else False
-
-        return {'verbose': f'{'Adding  ' if self.enabled else 'Ignoring'} device {name:50} ({self.device}) {self.capabilities}'}
+        return {'verbose': f'{'Ignoring' if 'disabled' in self.state else 'Adding   '} device {name:50} ({self.device}) {self.capabilities}'}
 
     def remove(self):
         'Remove the handler for an unplugged device'
@@ -475,10 +472,10 @@ class HANDLER:
 
     def release(self, message = None):
         'Release a handler and reset its state'
-        self.state = set()
-
         self.data = dict(x = 0, y = 0, dx = 0, dy = 0, ratio = 0, dratio = 0, angle = 0, dangle = 0)
         self.actions = {k:v for k, v in actions.actions.items() if k in self.capabilities}
+
+        self.state = set() if self.actions else {'disabled'}
 
         self.gesture = None
         self.motion = None
@@ -685,7 +682,7 @@ class HANDLER:
         event = event.split('_')
 
         # Skip the event if the device is disabled, not supported, or empty
-        if not self.enabled or not self.params_re.get(event[0]) or not params:
+        if 'disabled' in self.state or not self.params_re.get(event[0]) or not params:
             return
 
         fields = self.params_re[event[0]].match(params)
