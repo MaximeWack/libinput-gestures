@@ -525,85 +525,46 @@ class HANDLER:
         else:
             return self.release(f'No action for switch {switch} {state}')
 
-    def hold(self, device_type, event, time, fingers, cancelled):
-        'Handle a hold action'
-        if event == 'BEGIN':
-            if self.state:
-                return self.release(f'Handler for device {self.device} is in use (shouldn\'t be possible!)')
-
-            if not self.grab(device_type, fingers, 'hold', state = {'pre', 'holding', 'pending'}):
-                return self.release(f'No hold action with {fingers}_fingers. Releasing handler')
-
-        # Fake update event fired by the internal timer to run 'pre' action
-        elif event == 'UPDATE':
-            if time - self.start_time > options.hold_min_threshold:
-                if 'pending' in self.state:
-                    self.state.remove('pending')
-
-                if self.actions.get(None):
-                    res = self.actions[None]
-                    self.available_actions = res[self.wclass] if self.wclass in res else res[None]
-
-                if self.available_actions:
-                    if 'pre' in self.available_actions and 'pre' in self.state:
-                        self.run(self.available_actions['pre'])
-                        self.state.remove('pre')
-
-                    if 'continuous' in self.available_actions and time - self.start_time > options.update_timer:
-                        self.run(self.available_actions['continuous'])
-                        self.start_time = time
-
-        elif event == 'END':
-            print(f'{device_type} hold {event} with {fingers} fingers {'(cancelled)' if cancelled else ''}')
-            if not self.state:
-                return {'verbose': 'Not listening to HOLD event end here'}
-
-            # Hold didn't go over the set threshold
-            if 'pending' in self.state:
-                return self.release(f'Hold event not lasting long enough')
-            else:
-                # Cancelled hold (hold+ if exists)
-                if cancelled:
-                    if list(self.actions) == [None]:
-                        return self.release(f'No hold+ action. Releasing handler')
-                # Simple hold
-                elif self.available_actions and 'end' in self.available_actions:
-                    self.run(self.available_actions['end'])
-                    self.release()
-                else:
-                    return self.release(f'No end action for holding {fingers} fingers. Releasing handler')
-
     def begin(self, device_type, gesture, time, fingers):
         'Handle the begin event of all other actions'
         # Only grab handler if not in a hold+ gesture
-        if not 'holding' in self.state:
+        if not 'HOLD' in self.state:
             if self.state:
                 return self.release(f'Handler for device {self.device} is busy (shouldn\'t be possible!)')
 
-            if not self.grab(device_type, fingers, state = {'pre', 'gesture'}):
-                return self.release(f'No action for gesture with {fingers} fingers. Releasing handler')
+            if not self.grab(device_type, fingers, state = {'pre', gesture}):
+                return self.release(f'No gesture action with {fingers} fingers. Releasing handler')
         else:
-            self.state.remove('holding')
-            self.state.add('gesture')
+            self.state.remove('HOLD')
+            self.state.add(gesture)
 
         # Get gestures that can trigger actions
         self.available_gestures = {k for k, v in self.actions.items() if k != "apps" and k != None and not {self.wclass, None}.isdisjoint(v['apps'])}
-
-        # Skip if only HOLD gestures registered
-        if self.available_gestures == ['hold']:
-            return self.release(f'No gesture with {fingers} fingers registered for device {self.device}. Releasing handler')
 
         # Skip if libinput says the gesture is a swipe and there's no swipe action
         if gesture == 'SWIPE':
             if 'swipe' in self.available_gestures:
                 self.gesture = 'swipe'
             else:
-                return self.release(f'No action for swipe with {fingers} fingers. Releasing handler')
+                return self.release(f'No swipe action with {fingers} fingers. Releasing handler')
+
+        if gesture == 'HOLD':
+            if 'hold' in self.available_gestures:
+                self.advance('hold')
+                self.state.add('pending')
+            else:
+                return self.release(f'No hold action with {fingers} fingers. Releasing handler')
 
     def update(self, time, fingers, x, y, ratio, angle):
         'Handle the update event of all other actions'
         if not self.state:
             return {'verbose': 'Not listening to update events for this gesture'}
+
+        if 'pending' in self.state and time - self.start_time > options.hold_min_threshold:
+            self.state.remove('pending')
+            if self.actions.get(None):
+                res = self.actions[None]
+                self.available_actions = res[self.wclass] if self.wclass in res else res[None]
 
         # Update handler data
         if ratio:
@@ -698,6 +659,15 @@ class HANDLER:
         if not self.state:
             return self.release(f'Skipping end for device {self.device} as there isn\'t anything to do with it')
 
+        if 'pending' in self.state:
+            return self.release(f'Hold event not lasting long enough')
+
+        if 'HOLD' in self.state and cancelled:
+            if list(self.actions) == [None]:
+                return self.release(f'No hold+ action. Releasing handler')
+            else:
+                return
+
         # Run late actions (end, post)
         if self.available_actions:
             if 'end' in self.available_actions and not cancelled:
@@ -706,7 +676,7 @@ class HANDLER:
             if 'post' in self.available_actions:
                 self.run(self.available_actions['post'])
         else:
-            return self.release(f'No late action for this gesture. Releasing handler')
+            return self.release(f'No late action for {self.gesture} gesture. Releasing handler')
 
         self.release()
 
@@ -758,9 +728,7 @@ class HANDLER:
         'Listener for GESTURE lines'
         fingers = int(fingers)
 
-        if event[0] == 'HOLD':
-            return self.hold('gesture', event[1], time, fingers, cancelled)
-        elif event[1] == 'BEGIN':
+        if event[1] == 'BEGIN':
             return self.begin('gesture', event[0], time, fingers)
         elif event[1] == 'UPDATE':
             return self.update(time, fingers, x, y, ratio, angle)
@@ -970,15 +938,15 @@ def main():
 
             # Break for holding handlers
             for _, handler in handlers.items():
-                if 'holding' in handler.state:
+                if 'HOLD' in handler.state:
                     os.set_blocking(cmd.stdout.fileno(), False)
         else:
             # Hold update
             anyholding = False
             for _, handler in handlers.items():
-                if 'holding' in handler.state:
+                if 'HOLD' in handler.state:
                     anyholding = True
-                    handler.hold('timer', 'UPDATE', monotonic(), None, None)
+                    handler.update(monotonic(), None, None, None, None, None)
 
             if not anyholding:
                 os.set_blocking(cmd.stdout.fileno(), True)
