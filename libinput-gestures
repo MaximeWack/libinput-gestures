@@ -370,7 +370,7 @@ def get_conf_line(line):
     else:
         return f'Unavailable action/option {key}'
 
-def reset(signum = None, frame = None):
+def reload(signum = None, frame = None):
     global actions, handlers, cmd, conf_prefix, wclass_prefix
 
     # Reset handlers and read_conf prefixes
@@ -875,7 +875,7 @@ def main():
         sys.exit(f'\033[91m{PROGNAME} is already running for {user}, reloading conf')
 
     # Restart when receiving SIGUSR1
-    signal.signal(signal.SIGUSR1, reset)
+    signal.signal(signal.SIGUSR1, reload)
 
     # Set up command line arguments
     get_options()
@@ -945,7 +945,7 @@ def main():
 
         # Reload conf if conf file changes
         if os.stat(args.conffile).st_mtime != conf_lastmodif:
-            reset()
+            reload()
 
 if __name__ == '__main__':
     main()
