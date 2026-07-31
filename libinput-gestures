@@ -223,13 +223,11 @@ def open_lock(*args):
 def listen_libinput():
     'Run libinput debug-events and listen to its output'
     # User needs to belong to the input group to access the device
-    cmd = subprocess.Popen(shlex.split(f'stdbuf -oL -- libinput debug-events'),
     # 'sudo gpasswd -a $USER input' then log out/in
+    return subprocess.Popen(shlex.split(f'stdbuf -oL -- libinput debug-events'),
                            stdout = subprocess.PIPE,
                            bufsize = 1,
                            universal_newlines = True)
-
-    return cmd
 
 def get_options():
     'Parse the command-line options'
