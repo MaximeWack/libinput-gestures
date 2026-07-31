@@ -57,7 +57,7 @@ class OPTIONS:
             try:
                 setattr(self, option, valid(arg))
             except:
-                print(f'Option {option} must be of type {valid.__name__}. Falling back on default')
+                return f'Option {option} must be of type {valid.__name__}. Falling back on default'
         else:
             try:
                 setattr(self, option, valid(value))
