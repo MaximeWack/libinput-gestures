@@ -296,10 +296,6 @@ def read_conf(conffile, defname):
 
     # List out available gestures and configured options if that is asked for
     if args.verbose:
-        if actions.actions:
-            print('', f'Gestures configured in {confname}:', sep = '\n')
-            print(actions)
-
         print('', 'OPTIONS:', sep = '\n')
         for option, params in options.available.items():
             value = getattr(options, option)
@@ -309,7 +305,9 @@ def read_conf(conffile, defname):
             else:
                 print(f'{option:24} {value:>5}')
 
-        print()
+        if actions.actions:
+            print('', f'ACTIONS:', sep = '\n')
+            print(actions)
 
 def get_conf(conffile, confname):
     'Read given configuration file and store internal actions etc'
@@ -897,7 +895,7 @@ def main():
     handlers = {}
 
     if args.verbose:
-        print('LIBINPUT:')
+        print('', 'LIBINPUT:', sep = '\n')
 
     # Ensure stdout it blocking at startup
     os.set_blocking(cmd.stdout.fileno(), True)
