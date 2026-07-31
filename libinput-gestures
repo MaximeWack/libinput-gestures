@@ -138,7 +138,7 @@ class ACTIONS:
         self.parsed_actions.append(f'switch {toggle:12} {state:3} {command}')
         self.build_path('switch', toggle, state, command = command)
 
-    def add(self, restrict, hold, action, fingers, wclass, modifier, command, motion = 'hold'):
+    def add(self, restrict, hold, action, fingers, wclass, modifier, command, motion = 'still'):
         'Add all other actions'
         fingers = int(fingers)
         modifier = modifier or 'end'
@@ -559,8 +559,8 @@ class HANDLER:
 
         if 'pending' in self.state and time - self.start_time > options.hold_min_threshold:
             self.state.remove('pending')
-            if self.actions.get('hold'):
-                res = self.actions['hold']
+            if self.actions.get('still'):
+                res = self.actions['still']
                 self.available_actions = res[self.wclass] if self.wclass in res else res[None]
 
         # Update handler data
@@ -660,7 +660,7 @@ class HANDLER:
             return self.release(f'Hold event not lasting long enough')
 
         if 'HOLD' in self.state and cancelled:
-            if list(self.actions) == ['hold', 'apps']:
+            if list(self.actions) == ['still', 'apps']:
                 return self.release(f'No hold+ action. Releasing handler')
             else:
                 return
