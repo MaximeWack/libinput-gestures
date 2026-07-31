@@ -201,9 +201,10 @@ def open_lock(*args):
     # We use exclusive assess to a file for this
     fp = Path('/tmp', '-'.join(args) + '.lock').open('a')
 
-    # Acquire lock and write current pid
+    # Acquire lock
     try:
         fcntl.lockf(fp, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    # If lock exists, send SIGUSR1 to running process to reload conf and exit
     except IOError:
         fpid = Path('/tmp', '-'.join(args) + '.lock').open('r')
         running_pid = int(fpid.readline())
@@ -213,6 +214,7 @@ def open_lock(*args):
 
     fp.close()
 
+    # Write pid into lockfile
     fp = Path('/tmp', '-'.join(args) + '.lock').open('w')
     fcntl.lockf(fp, fcntl.LOCK_EX | fcntl.LOCK_NB)
     fp.write(str(os.getpid()))
@@ -294,7 +296,7 @@ def read_conf(conffile, defname):
     # Read and process the conf file
     get_conf(confpath, confname)
 
-    # List out available gestures and configured options if that is asked for
+    # List out configured options and actions
     if args.verbose:
         print('', 'OPTIONS:', sep = '\n')
         for option, params in options.available.items():
