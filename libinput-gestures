@@ -33,25 +33,24 @@ class OPTIONS:
 
     # Configurable options with their default values and validation functions
     available = dict(
-        swipe_min_threshold   = dict(default = 5    , valid = float, help = "Minimum travel distance to register a swipe"),
-        ratio_min_threshold   = dict(default = .2   , valid = float, help = "Minimum ratio to register a pinch"),
-        angle_min_threshold   = dict(default = 10   , valid = float, help = "Minimum angle to register a rotation"),
-        hold_min_threshold    = dict(default = .5   , valid = float, help = "Minimum time (in s) to register a hold"),
-        swipe_chain_threshold = dict(default = 100  , valid = float, help = "Minimum travel distance to register a chained swipe"),
-        ratio_chain_threshold = dict(default = .4   , valid = float, help = "Minimum ratio to register a chained pinch"),
-        angle_chain_threshold = dict(default = 100  , valid = float, help = "Minimum angle to register a chained rotation"),
-        update_timer          = dict(default = .1   , valid = float, help = "Time interval at which update a continuous motion"),
-        device                = dict(default = "all", valid = str,   help = '"all", or device name, or device path'))
+        swipe_min_threshold   = dict(default = 5    , valid = float, help = 'Minimum travel distance to register a swipe'),
+        ratio_min_threshold   = dict(default = .2   , valid = float, help = 'Minimum ratio to register a pinch'),
+        angle_min_threshold   = dict(default = 10   , valid = float, help = 'Minimum angle to register a rotation'),
+        hold_min_threshold    = dict(default = .5   , valid = float, help = 'Minimum time (in s) to register a hold'),
+        swipe_chain_threshold = dict(default = 100  , valid = float, help = 'Minimum travel distance to register a chained swipe'),
+        ratio_chain_threshold = dict(default = .4   , valid = float, help = 'Minimum ratio to register a chained pinch'),
+        angle_chain_threshold = dict(default = 100  , valid = float, help = 'Minimum angle to register a chained rotation'),
+        update_timer          = dict(default = .1   , valid = float, help = 'Time interval at which update a continuous motion'))
 
     def __init__(self):
         'Create attributes from the dict and set default values'
         for opt, params in self.available.items():
-            setattr(self, opt, params["default"])
+            setattr(self, opt, params['default'])
 
     def set(self, option, value):
         'Set an option value (arg > conf > default)'
         arg = getattr(args, option)
-        valid = self.available[option]["valid"]
+        valid = self.available[option]['valid']
 
         if arg:
             try:
@@ -112,8 +111,8 @@ class ACTIONS:
         for action, params in self.available.items():
             verbs = []
             for verb, arg in params.items():
-                arg = '|'.join(arg) if type(arg).__name__ != "str" else arg
-                if verb[-1] == "?":
+                arg = '|'.join(arg) if type(arg).__name__ != 'str' else arg
+                if verb[-1] == '?':
                     verbs.append(rf"""(?P<{verb[:-1]}>{arg})?""")
                 else:
                     verbs.append(rf"""(?P<{verb}>{arg})""")
@@ -224,8 +223,8 @@ def open_lock(*args):
 def listen_libinput():
     'Run libinput debug-events and listen to its output'
     # User needs to belong to the input group to access the device
-    # "sudo gpasswd -a $USER input" then log out/in
     cmd = subprocess.Popen(shlex.split(f'stdbuf -oL -- libinput debug-events'),
+    # 'sudo gpasswd -a $USER input' then log out/in
                            stdout = subprocess.PIPE,
                            bufsize = 1,
                            universal_newlines = True)
@@ -253,7 +252,7 @@ def get_options():
                      help = 'output raw libinput output')
     for option, params in options.available.items():
         opt.add_argument('--' + option,
-                         help = params["help"])
+                         help = params['help'])
     args = opt.parse_args()
 
     if args.debug:
@@ -278,7 +277,7 @@ def read_conf(conffile, defname):
         confpath = Path(conffile)
 
         if not confpath.exists():
-            sys.exit(f'\033[91mConf file "{conffile}" does not exist.\033[0m')
+            sys.exit(f'\033[91mConf file {conffile} does not exist.\033[0m')
     else:
         for confdir in CONFDIRS:
             confpath = Path(confdir, defname)
@@ -306,7 +305,7 @@ def read_conf(conffile, defname):
         print('', 'OPTIONS:', sep = '\n')
         for option, params in options.available.items():
             value = getattr(options, option)
-            default = params["default"]
+            default = params['default']
             if value != default:
                 print(f'{option:24} {value:>5} ({default=})')
             else:
@@ -323,11 +322,11 @@ def get_conf(conffile, confname):
             line = line.expandtabs(2).rstrip()
 
             # comments
-            line = re.sub(r"\s*#.*$", "", line)
+            line = re.sub(r'\s*#.*$', '', line)
             if not line.strip():
                 continue
 
-            if re.match(r"^\[.*\]$", line.strip()):
+            if re.match(r'^\[.*\]$', line.strip()):
                 wclass_prefix = line.strip()[1:-1]
                 continue
 
@@ -395,12 +394,12 @@ class HANDLER:
     'Class for device handler objects'
 
     # Available capabilities
-    cap_dict = dict(k = "keyboard",
-                    T = "tablet",
-                    t = "touch", # in actions
-                    p = "pointer", # match to gesture too ? or disregard because we don't want simple pointers ?
-                    g = "gesture", # in actions
-                    S = "switch") # in actions
+    cap_dict = dict(k = 'keyboard',
+                    T = 'tablet',
+                    t = 'touch', # in actions
+                    p = 'pointer', # match to gesture too ? or disregard because we don't want simple pointers ?
+                    g = 'gesture', # in actions
+                    S = 'switch') # in actions
 
     # Parsing regexes for libinput events
     params_re = dict(
@@ -536,7 +535,7 @@ class HANDLER:
             self.state.add(gesture)
 
         # Get gestures that can trigger actions
-        self.available_gestures = {k for k, v in self.actions.items() if k != "apps" and not {self.wclass, None}.isdisjoint(v.get('apps') or set())}
+        self.available_gestures = {k for k, v in self.actions.items() if k != 'apps' and not {self.wclass, None}.isdisjoint(v.get('apps') or set())}
 
         # Skip if libinput says the gesture is a swipe and there's no swipe action
         if gesture == 'SWIPE':
