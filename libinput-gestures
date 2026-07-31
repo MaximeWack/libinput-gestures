@@ -660,7 +660,7 @@ class HANDLER:
             return self.release(f'Hold event not lasting long enough')
 
         if 'HOLD' in self.state and cancelled:
-            if list(self.actions) == ['hold']:
+            if list(self.actions) == ['hold', 'apps']:
                 return self.release(f'No hold+ action. Releasing handler')
             else:
                 return
