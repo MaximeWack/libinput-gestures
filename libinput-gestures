@@ -465,7 +465,13 @@ class HANDLER:
 
         self.wclass = subprocess.run(['xdotool', 'getwindowfocus', 'getwindowclassname'], capture_output = True).stdout.decode('utf-8').strip()
         self.start_time = monotonic()
-        return self.advance(*items)
+
+        for item in items:
+           self.actions = self.actions.get(item)
+           if not self.actions:
+               return False
+
+        return True
 
     def release(self, message = None):
         'Release a handler and reset its state'
@@ -474,22 +480,14 @@ class HANDLER:
 
         self.state = set() if self.actions else {'disabled'}
 
+        self.available_gestures = []
+        self.available_motions = []
+        self.available_actions = []
         self.gesture = None
         self.motion = None
         self.wclass = None
-        self.available_motions = None
-        self.available_actions = None
 
         return {'verbose': message} if message else None
-
-    def advance(self, *items):
-        'Advance the action path'
-        for item in items:
-           self.actions = self.actions.get(item)
-           if not self.actions:
-               return False
-
-        return True
 
     def run(self, command):
         'Run the given command'
@@ -519,46 +517,32 @@ class HANDLER:
         else:
             return self.release(f'No action for switch {switch} {state}')
 
+    def hold(self):
+        'Soft reset handler for hold+ gesture'
+        self.state.add('holding')
+
+        self.data = dict(x = 0, y = 0, dx = 0, dy = 0, ratio = 0, dratio = 0, angle = 0, dangle = 0)
+        self.actions = self.actions['hold']
+
+        self.available_gestures = []
+        self.available_motions = []
+        self.gesture = None
+        self.motion = None
+
     def begin(self, device_type, gesture, time, fingers):
-        'Handle the begin event of all other actions'
+        'Handle begin event'
         # Only grab handler if not in a hold+ gesture
-        if not 'HOLD' in self.state:
+        if not 'holding' in self.state:
             if self.state:
                 return self.release(f'Handler for device {self.device} is busy (shouldn\'t be possible!)')
 
-            if not self.grab(device_type, fingers, state = {'pre', gesture}):
+            if not self.grab(device_type, fingers, state = {'pre', 'update', gesture}):
                 return self.release(f'No gesture action with {fingers} fingers. Releasing handler')
-        else:
-            self.state.remove('HOLD')
-            self.state.add(gesture)
-
-        # Get gestures that can trigger actions
-        self.available_gestures = {k for k, v in self.actions.items() if k != 'apps' and not {self.wclass, None}.isdisjoint(v.get('apps') or set())}
-
-        # Skip if libinput says the gesture is a swipe and there's no swipe action
-        if gesture == 'SWIPE':
-            if 'swipe' in self.available_gestures:
-                self.gesture = 'swipe'
-            else:
-                return self.release(f'No swipe action with {fingers} fingers. Releasing handler')
-
-        if gesture == 'HOLD':
-            if 'hold' in self.available_gestures:
-                self.advance('hold')
-                self.state.add('pending')
-            else:
-                return self.release(f'No hold action with {fingers} fingers. Releasing handler')
 
     def update(self, time, fingers, x, y, ratio, angle):
-        'Handle the update event of all other actions'
+        'Handle update event'
         if not self.state:
             return {'verbose': 'Not listening to update events for this gesture'}
-
-        if 'pending' in self.state and time - self.start_time > options.hold_min_threshold:
-            self.state.remove('pending')
-            if self.actions.get('still'):
-                res = self.actions['still']
-                self.available_actions = res[self.wclass] if self.wclass in res else res[None]
 
         # Update handler data
         if ratio:
@@ -579,11 +563,16 @@ class HANDLER:
 
         x, y, dx, dy, ratio, dratio, angle, dangle = self.data.values()
 
-        # Determine gesture within available gestures
+        # Get available gestures
+        if not self.available_gestures:
+            self.available_gestures = {k for k, v in self.actions.items() if k != 'apps' and not {self.wclass, None}.isdisjoint(v.get('apps') or set())}
+
+        # Determine gesture
         if not self.gesture:
             self.gesture = 'rotate' if 'rotate' in self.available_gestures and abs(angle) > options.angle_min_threshold \
                      else  'pinch'  if 'pinch'  in self.available_gestures and abs(ratio) > options.ratio_min_threshold \
                      else  'swipe'  if 'swipe'  in self.available_gestures and math.sqrt(x ** 2 + y ** 2) > options.swipe_min_threshold \
+                     else  'hold'   if 'hold'   in self.available_gestures and time - self.start_time > options.hold_min_threshold \
                 else None
 
         # Get available motions
@@ -591,7 +580,7 @@ class HANDLER:
             res = self.actions[self.gesture]
             self.available_motions = {k for k, v in res.items() if (not {self.wclass, None}.isdisjoint(list(v)) and k != 'apps')}
 
-        # Determine gesture motion
+        # Determine motion
         if self.available_motions and not self.motion:
             self.motion = 'up'    if 'up'    in self.available_motions and abs(y) > abs(x) and y < 0 \
                      else 'down'  if 'down'  in self.available_motions and abs(y) > abs(x) and y > 0 \
@@ -601,6 +590,7 @@ class HANDLER:
                      else 'out'   if 'out'   in self.available_motions and ratio > 0 \
                      else 'cw'    if 'cw'    in self.available_motions and angle > 0 \
                      else 'ccw'   if 'ccw'   in self.available_motions and angle < 0 \
+                     else 'still' if 'still' in self.available_motions \
                      else None
 
         # Register motion only if over *_chain_threshold
@@ -624,7 +614,7 @@ class HANDLER:
             # Discard non chaining motions when chaining
             if 'chain' in self.state and 'chain' not in self.available_actions:
                 self.motion = None
-                self.available_actions = None
+                self.available_actions = []
                 return
 
             # Execute pre action only once
@@ -648,19 +638,26 @@ class HANDLER:
                 self.motion = None
                 self.data = dict(x = 0, y = 0, dx = 0, dy = 0, angle = 0, ratio = 0, dangle = 0, dratio = 0)
 
+        # Set holding if holding still
+        if not 'holding' in self.state and self.motion == 'still':
+            self.hold()
+
     def end(self, cancelled):
-        'Handle end event for all actions'
+        'Handle end event'
         if not self.state:
             return self.release(f'Skipping end for device {self.device} as there isn\'t anything to do with it')
 
-        if 'pending' in self.state:
-            return self.release(f'Hold event not lasting long enough')
-
-        if 'HOLD' in self.state and cancelled:
-            if list(self.actions) == ['still', 'apps']:
-                return self.release(f'No hold+ action. Releasing handler')
-            else:
-                return
+        if 'holding' in self.state:
+            if cancelled:
+                if not self.gesture and list(self.actions) != ['still', 'apps']:
+                    return
+                elif self.gesture and list(self.actions) != ['still', 'apps']:
+                    pass
+                else:
+                    return self.release(f'No hold+ action. Releasing handler')# if list(self.actions) == ['still', 'apps'] else None
+        else:
+            if not self.gesture:
+                return self.release(f'Hold too short') if 'hold' in self.available_gestures else self.release()
 
         # Run late actions (end, post)
         if self.available_actions:
@@ -669,10 +666,8 @@ class HANDLER:
 
             if 'post' in self.available_actions:
                 self.run(self.available_actions['post'])
-        else:
-            return self.release(f'No late action for {self.gesture} gesture. Releasing handler')
 
-        self.release()
+        return self.release()
 
     def parse(self, event, params):
         'Parse a libinput line and dispatch to the relevant listener'
@@ -932,13 +927,13 @@ def main():
 
             # Break for holding handlers
             for _, handler in handlers.items():
-                if 'HOLD' in handler.state:
+                if 'update' in handler.state:
                     os.set_blocking(cmd.stdout.fileno(), False)
         else:
             # Hold update
             anyholding = False
             for _, handler in handlers.items():
-                if 'HOLD' in handler.state:
+                if 'update' in handler.state:
                     anyholding = True
                     handler.update(monotonic(), None, None, None, None, None)
 
