@@ -16,6 +16,11 @@ from argparse import ArgumentParser
 from time import monotonic
 from pathlib import Path
 
+try:
+    import Xlib.display
+except:
+    print("No Xlib library found. Window class specific actions won't be available")
+
 PROGNAME = Path(sys.argv[0]).stem
 
 def lock():
@@ -441,7 +446,10 @@ class HANDLER:
         self.available_actions = []
 
         self.state = {'busy'}
-        self.wclass = subprocess.run(['xdotool', 'getwindowfocus', 'getwindowclassname'], capture_output = True).stdout.decode('utf-8').strip()
+        if Xlib.display:
+            _, self.wclass = Xlib.display.Display().get_input_focus().focus.get_wm_class()
+        else:
+            self.wclass = None
 
         for item in items:
            self.actions = self.actions.get(item)
