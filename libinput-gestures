@@ -196,29 +196,15 @@ actions = ACTIONS()
 
 args = None
 
-def open_lock(*args):
-    'Create a lock based on given list of arguments'
-    # We use exclusive assess to a file for this
-    fp = Path('/tmp', '-'.join(args) + '.lock').open('a')
+def lock():
+    'Create a lockfile'
+    user = getpass.getuser()
+    fp = Path('/tmp', PROGNAME + '-' + user + '.lock').open('w')
 
-    # Acquire lock
     try:
         fcntl.lockf(fp, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    # If lock exists, send SIGUSR1 to running process to reload conf and exit
     except IOError:
-        fpid = Path('/tmp', '-'.join(args) + '.lock').open('r')
-        running_pid = int(fpid.readline())
-        os.kill(running_pid, signal.SIGUSR1)
-        fpid.close()
-        return None
-
-    fp.close()
-
-    # Write pid into lockfile
-    fp = Path('/tmp', '-'.join(args) + '.lock').open('w')
-    fcntl.lockf(fp, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    fp.write(str(os.getpid()))
-    fp.flush()
+        sys.exit(f'\033[91m{PROGNAME} is already running for {user}, exiting…\033[0m')
 
     return fp
 
@@ -851,10 +837,7 @@ def main():
     global cmd, handlers
 
     # Make sure only one instance running for current user
-    user = getpass.getuser()
-    proglock = open_lock(PROGNAME, user)
-    if not proglock:
-        sys.exit(f'\033[91m{PROGNAME} is already running for {user}, reloading conf\033[0m')
+    proglock = lock()
 
     # Restart when receiving SIGUSR1
     signal.signal(signal.SIGUSR1, reload)
