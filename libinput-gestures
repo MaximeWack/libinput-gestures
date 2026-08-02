@@ -15,7 +15,6 @@ from time import monotonic
 from pathlib import Path
 
 PROGNAME = Path(sys.argv[0]).stem
-args = None
 
 class OPTIONS:
     'Singleton class for storing options'
@@ -326,7 +325,6 @@ def listen_libinput():
 
 def get_options():
     'Parse the command-line options'
-    global args
     opt = argparse.ArgumentParser(description = __doc__)
     opt.add_argument('-c',
                      '--conffile',
@@ -350,6 +348,8 @@ def get_options():
 
     if args.debug:
         args.verbose = True
+
+    return args
 
 def verbose(message):
     if args.verbose:
@@ -819,7 +819,7 @@ options = OPTIONS()
 actions = ACTIONS()
 
 # Set up command line arguments
-get_options()
+args = get_options()
 
 # Make sure only one instance running for current user
 proglock = lock()
