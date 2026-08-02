@@ -15,16 +15,7 @@ from time import monotonic
 from pathlib import Path
 
 PROGNAME = Path(sys.argv[0]).stem
-
-# Conf file containing gesture commands.
-# Search first for user file then system file.
-CONFNAME = f'{PROGNAME}.conf'
-CONFDIRS = (os.getenv('XDG_CONFIG_HOME', '~/.config'), '/etc')
-
-conf_prefix = []
-wclass_prefix = None
 cmd = None
-conf_lastmodif = None
 args = None
 
 class OPTIONS:
@@ -187,6 +178,133 @@ class ACTIONS:
 
         return self.instance
 
+class CONF_READER:
+    'Singleton class for reading the configuration file'
+
+    CONFNAME = f'{PROGNAME}.conf'
+    CONFDIRS = (os.getenv('XDG_CONFIG_HOME', '~/.config'), '/etc')
+
+    confpath = None
+    confname = None
+
+    def __init__(self):
+        'Search for configuration file. Use file given as command line argument, else look for file in search dir order'
+        if args.conffile:
+            self.confname = Path(args.conffile)
+            self.confpath = self.confname.expanduser()
+
+            if not self.confpath.exists():
+                sys.exit(f'\033[91mConf file {args.conffile} does not exist.\033[0m')
+        else:
+            for confdir in self.CONFDIRS:
+                self.confname = Path(confdir, self.CONFNAME)
+                self.confpath = self.confname.expanduser()
+
+                if self.confpath.exists():
+                    break
+                else:
+                    sys.exit(f'\033[91mNo {self.CONFNAME} file in {" or ".join(self.CONFDIRS)}.\033[0m')
+
+    def read(self):
+        'Read given configuration file and store internal actions etc'
+        self.action_prefix = []
+        self.wclass_prefix = None
+        self.lastmodif = os.stat(self.confpath).st_mtime
+
+        with self.confpath.open() as fp:
+            for num, line in enumerate(fp, 1):
+                line = line.expandtabs(2).rstrip()
+
+                # comments
+                line = re.sub(r'\s*#.*$', '', line)
+                if not line.strip():
+                    continue
+
+                # wclass sections
+                if re.match(r'^\[.*\]$', line.strip()):
+                    self.wclass_prefix = line.strip()[1:-1]
+                    continue
+
+                errmsg = self.get_line(line)
+
+                if errmsg:
+                    sys.exit(f'\033[91mError at line {num} in file {self.confname}:\n>> {line} <<\n{errmsg}.\033[0m')
+
+        # List out configured options and actions
+        verbose('\nOPTIONS:')
+        for option, params in options.available.items():
+            value = getattr(options, option)
+            default = params['default']
+            if value != default:
+                verbose(f'{option:24} {value:>5} ({default=})')
+            else:
+                verbose(f'{option:24} {value:>5}')
+
+        verbose('\nACTIONS:')
+        verbose(actions)
+
+    def get_line(self, line):
+        'Process a single line of conf file'
+        # Handle action prefix
+        indent = (len(line) - len(line.lstrip(' '))) // 2
+
+        if indent > len(self.action_prefix):
+            return f'Wrong indentation'
+
+        # Use the prefix up to the indentation level
+        self.action_prefix = self.action_prefix[:indent]
+
+        # Add words to the prefix
+        if line[-1] == ':':
+            self.action_prefix.append(line[:-1])
+            return None
+
+        key, argslist = (' '.join(self.action_prefix) + ' ' + line).split(maxsplit = 1)
+
+        restrict = None
+        hold = None
+
+        if key == 'touch' or key == 'gesture':
+            restrict = key
+            key, argslist = argslist.split(maxsplit = 1)
+
+        if key[:5] == 'hold+':
+            hold = 'hold+'
+            key = key[5:]
+
+        if key in options.available:
+            return options.set(key, argslist)
+        elif key in actions.available:
+            return actions.parse(restrict, hold, key, argslist, self.wclass_prefix)
+        else:
+            return f'Unavailable action/option {key}'
+
+    def watch(self):
+        global handlers, cmd
+
+        if os.stat(self.confpath).st_mtime != self.lastmodif:
+            verbose('Reloading…')
+
+            # Reset actions
+            ACTIONS()
+
+            # Reload conf
+            self.read()
+
+            # Reset handlers and libinput
+            handlers = {}
+            cmd.terminate()
+            cmd = listen_libinput()
+
+    instance = None
+
+    def __new__(self):
+        'Ensure single instance'
+        if self.instance is None:
+            self.instance = super().__new__(self)
+
+        return self.instance
+
 def lock():
     'Create a lockfile'
     user = os.getlogin()
@@ -233,124 +351,6 @@ def get_options():
 
     if args.debug:
         args.verbose = True
-
-def read_conf():
-    'Search for configuration file. Use file given as command line argument, else look for file in search dir order'
-    global conf_lastmodif
-
-    if args.conffile:
-        confpath = Path(args.conffile)
-
-        if not confpath.exists():
-            sys.exit(f'\033[91mConf file {args.conffile} does not exist.\033[0m')
-    else:
-        for confdir in CONFDIRS:
-            confname = Path(confdir, CONFNAME)
-            confpath = confname.expanduser()
-
-            if confpath.exists():
-                args.conffile = confpath
-                break
-            else:
-                sys.exit(f'\033[91mNo {CONFNAME} file in {" or ".join(CONFDIRS)}.\033[0m')
-
-    conf_lastmodif = os.stat(confpath).st_mtime
-
-    # Read and process the conf file
-    get_conf(confpath, confname)
-
-    # List out configured options and actions
-    verbose('\nOPTIONS:')
-    for option, params in options.available.items():
-        value = getattr(options, option)
-        default = params['default']
-        if value != default:
-            verbose(f'{option:24} {value:>5} ({default=})')
-        else:
-            verbose(f'{option:24} {value:>5}')
-
-    verbose('\nACTIONS:')
-    verbose(actions)
-
-def get_conf(conffile, confname):
-    'Read given configuration file and store internal actions etc'
-    global wclass_prefix
-
-    with conffile.open() as fp:
-        for num, line in enumerate(fp, 1):
-            line = line.expandtabs(2).rstrip()
-
-            # comments
-            line = re.sub(r'\s*#.*$', '', line)
-            if not line.strip():
-                continue
-
-            # wclass sections
-            if re.match(r'^\[.*\]$', line.strip()):
-                wclass_prefix = line.strip()[1:-1]
-                continue
-
-            errmsg = get_conf_line(line)
-
-            if errmsg:
-                sys.exit(f'\033[91mError at line {num} in file {confname}:\n>> {line} <<\n{errmsg}.\033[0m')
-
-def get_conf_line(line):
-    'Process a single line in conf file'
-    global conf_prefix
-
-    # conf prefix
-    # Get current line indentation
-    indent = (len(line) - len(line.lstrip(' '))) // 2
-
-    if indent > len(conf_prefix):
-        return f'Wrong indentation'
-
-    # Use the prefix up to the indentation level
-    conf_prefix = conf_prefix[:indent]
-
-    # Add words to the prefix
-    if line[-1] == ':':
-        conf_prefix.append(line[:-1])
-        return None
-
-    key, argslist = (' '.join(conf_prefix) + ' ' + line).split(maxsplit = 1)
-
-    restrict = None
-    hold = None
-
-    if key == 'touch' or key == 'gesture':
-        restrict = key
-        key, argslist = argslist.split(maxsplit = 1)
-
-    if key[:5] == 'hold+':
-        hold = 'hold+'
-        key = key[5:]
-
-    if key in options.available:
-        return options.set(key, argslist)
-    elif key in actions.available:
-        return actions.parse(restrict, hold, key, argslist, wclass_prefix)
-    else:
-        return f'Unavailable action/option {key}'
-
-def reload(signum = None, frame = None):
-    global handlers, cmd, conf_prefix, wclass_prefix
-
-    verbose('Reloading…')
-
-    # Reset handlers and read_conf prefixes
-    handlers = {}
-    conf_prefix = []
-    wclass_prefix = None
-
-    # Reset actions and re-read from conf
-    ACTIONS()
-    read_conf()
-
-    # Reset libinput
-    cmd.terminate()
-    cmd = listen_libinput()
 
 def verbose(message):
     if args.verbose:
@@ -887,8 +887,7 @@ def main():
                 os.set_blocking(cmd.stdout.fileno(), True)
 
         # Reload conf if conf file changes
-        if os.stat(args.conffile).st_mtime != conf_lastmodif:
-            reload()
+        conf.watch()
 
 if __name__ == '__main__':
     main()
