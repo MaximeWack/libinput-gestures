@@ -11,7 +11,6 @@ import re
 import fcntl
 import platform
 import math
-import signal
 from time import monotonic
 from pathlib import Path
 
@@ -824,9 +823,6 @@ def main():
 
     # Make sure only one instance running for current user
     proglock = lock()
-
-    # Restart when receiving SIGUSR1
-    signal.signal(signal.SIGUSR1, reload)
 
     # Set up command line arguments
     get_options()
