@@ -8,7 +8,6 @@ import argparse
 import subprocess
 import shlex
 import re
-import getpass
 import fcntl
 import platform
 import math
@@ -197,7 +196,7 @@ args = None
 
 def lock():
     'Create a lockfile'
-    user = getpass.getuser()
+    user = os.getlogin()
     fp = Path('/tmp', PROGNAME + '-' + user + '.lock').open('w')
 
     try:
