@@ -15,7 +15,6 @@ from time import monotonic
 from pathlib import Path
 
 PROGNAME = Path(sys.argv[0]).stem
-cmd = None
 args = None
 
 class OPTIONS:
@@ -815,41 +814,35 @@ class HANDLER:
     #             startPos = []
     #             ready = True
 
+# Set up everything before running the main loop
 options = OPTIONS()
 actions = ACTIONS()
 
+# Set up command line arguments
+get_options()
+
+# Make sure only one instance running for current user
+proglock = lock()
+
+# Output various info/version info
+xsession = os.getenv('XDG_SESSION_DESKTOP') or os.getenv('DESKTOP_SESSION') or 'unknown'
+xtype = os.getenv('XDG_SESSION_TYPE') or 'unknown'
+verbose(f'{PROGNAME}: session {xsession}+{xtype} on {platform.platform()}, python {platform.python_version()}')
+
+conf = CONF_READER()
+conf.read()
+
+# Listen to libinput debug-events
+cmd = listen_libinput()
+handlers = {}
+
+# Ensure stdout it blocking at startup
+os.set_blocking(cmd.stdout.fileno(), True)
+
 def main():
-    global cmd, handlers
-
-    # Make sure only one instance running for current user
-    proglock = lock()
-
-    # Set up command line arguments
-    get_options()
-
-    # Output various info/version info
-    xsession = os.getenv('XDG_SESSION_DESKTOP') or os.getenv('DESKTOP_SESSION') or 'unknown'
-    xtype = os.getenv('XDG_SESSION_TYPE') or 'unknown'
-    verbose(f'{PROGNAME}: session {xsession}+{xtype} on {platform.platform()}, python {platform.python_version()}')
-
-    # Read and process the conf file
-    read_conf()
-
-    # Listen to libinput debug-events
-    cmd = listen_libinput()
-
-    handlers = {}
-
-    verbose('\nLIBINPUT:')
-
-    # Ensure stdout it blocking at startup
-    os.set_blocking(cmd.stdout.fileno(), True)
-
-    # Sit in a loop forever reading the libinput messages.
     while True:
         line = cmd.stdout.readline().strip()
 
-        # Parse libinput output
         if line:
             fields = HANDLER.params_re['LIBINPUT'].match(line)
 
