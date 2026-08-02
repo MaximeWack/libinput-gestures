@@ -20,7 +20,7 @@ PROGNAME = Path(sys.argv[0]).stem
 # Conf file containing gesture commands.
 # Search first for user file then system file.
 CONFNAME = f'{PROGNAME}.conf'
-CONFDIRS = (os.getenv('XDG_CONFIG_HOME', os.path.expanduser('~/.config')), '/etc')
+CONFDIRS = (os.getenv('XDG_CONFIG_HOME', '~/.config'), '/etc')
 
 conf_prefix = []
 wclass_prefix = None
@@ -241,40 +241,27 @@ def get_options():
     if args.debug:
         args.verbose = True
 
-def unexpanduser(cfile):
-    'Return absolute path name, with $HOME replaced by ~'
-    relslash = Path(os.path.abspath(str(cfile)))
-
-    try:
-        relhome = relslash.relative_to(os.getenv('HOME'))
-    except (ValueError, TypeError):
-        relhome = None
-
-    return ('~/' + str(relhome)) if relhome else str(relslash)
-
-def read_conf(conffile, defname):
+def read_conf():
     'Search for configuration file. Use file given as command line argument, else look for file in search dir order'
     global conf_lastmodif
 
-    if conffile:
-        confpath = Path(conffile)
+    if args.conffile:
+        confpath = Path(args.conffile)
 
         if not confpath.exists():
-            sys.exit(f'\033[91mConf file {conffile} does not exist.\033[0m')
+            sys.exit(f'\033[91mConf file {args.conffile} does not exist.\033[0m')
     else:
         for confdir in CONFDIRS:
-            confpath = Path(confdir, defname)
+            confname = Path(confdir, CONFNAME)
+            confpath = confname.expanduser()
 
             if confpath.exists():
                 args.conffile = confpath
                 break
             else:
-                sys.exit('\033[91mNo file {defname} in {" or ".join([unexpanduser(Path(c)) for c in CONFDIRS])}.\033[0m')
+                sys.exit(f'\033[91mNo {CONFNAME} file in {" or ".join(CONFDIRS)}.\033[0m')
 
     conf_lastmodif = os.stat(confpath).st_mtime
-
-    # Hide any personal user dir/names from diag output
-    confname = unexpanduser(confpath)
 
     # Read and process the conf file
     get_conf(confpath, confname)
@@ -366,7 +353,7 @@ def reload(signum = None, frame = None):
 
     # Reset actions and re-read from conf
     actions = ACTIONS()
-    read_conf(args.conffile, CONFNAME)
+    read_conf()
 
     # Reset libinput
     cmd.terminate()
@@ -850,7 +837,7 @@ def main():
     verbose(f'{PROGNAME}: session {xsession}+{xtype} on {platform.platform()}, python {platform.python_version()}')
 
     # Read and process the conf file
-    read_conf(args.conffile, CONFNAME)
+    read_conf()
 
     # Listen to libinput debug-events
     cmd = listen_libinput()
