@@ -361,6 +361,10 @@ def debug(message):
     if args.debug:
         print(f'\033[93m{message}\033[0m', file = sys.stderr)
 
+def raw(message):
+    if args.raw:
+        print(f'\033[95m{message}\033[0m')
+
 class HANDLER:
     'Class for device handler objects'
 
@@ -639,8 +643,7 @@ class HANDLER:
 
         fields = fields.groupdict()
 
-        if args.raw:
-            print(f'Parsed event: {fields}')
+        raw(f'Parsed event: {fields}')
 
         # Dispatch to the relevant listener
         answer = self.LISTENERS[event[0]](event[1:], monotonic(), **fields)
@@ -860,9 +863,8 @@ def main():
 
             device, event, params = fields.groupdict().values()
 
-            if args.raw:
-                print(f'\033[95m{line}\033[0m')
-                print(f'Parsed libinput line: {device=} {event=}')
+            raw(line)
+            raw(f'Parsed libinput line: {device=} {event=}')
 
             # Create a handler for every device
             if not handlers.get(device):
@@ -871,8 +873,7 @@ def main():
             # Pass the event and params to the handler
             handlers[device].parse(event, params)
 
-            if args.raw:
-                print()
+            raw('')
 
             # Break for holding handlers
             for _, handler in handlers.items():
