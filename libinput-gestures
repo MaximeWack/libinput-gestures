@@ -224,8 +224,7 @@ def open_lock(*args):
 
 def listen_libinput():
     'Run libinput debug-events and listen to its output'
-    # User needs to belong to the input group to access the device
-    # 'sudo gpasswd -a $USER input' then log out/in
+    # User needs to belong to the input group to access the device ('sudo gpasswd -a $USER input') then log out/in
     return subprocess.Popen(shlex.split(f'stdbuf -oL -- libinput debug-events'),
                            stdout = subprocess.PIPE,
                            bufsize = 1,
@@ -297,19 +296,17 @@ def read_conf(conffile, defname):
     get_conf(confpath, confname)
 
     # List out configured options and actions
-    if args.verbose:
-        print('', 'OPTIONS:', sep = '\n')
-        for option, params in options.available.items():
-            value = getattr(options, option)
-            default = params['default']
-            if value != default:
-                print(f'{option:24} {value:>5} ({default=})')
-            else:
-                print(f'{option:24} {value:>5}')
+    verbose('\nOPTIONS:')
+    for option, params in options.available.items():
+        value = getattr(options, option)
+        default = params['default']
+        if value != default:
+            verbose(f'{option:24} {value:>5} ({default=})')
+        else:
+            verbose(f'{option:24} {value:>5}')
 
-        if actions.actions:
-            print('', f'ACTIONS:', sep = '\n')
-            print(actions)
+    verbose('\nACTIONS:')
+    verbose(actions)
 
 def get_conf(conffile, confname):
     'Read given configuration file and store internal actions etc'
@@ -375,6 +372,8 @@ def get_conf_line(line):
 def reload(signum = None, frame = None):
     global actions, handlers, cmd, conf_prefix, wclass_prefix
 
+    verbose('Reloading…')
+
     # Reset handlers and read_conf prefixes
     handlers = {}
     conf_prefix = []
@@ -387,6 +386,14 @@ def reload(signum = None, frame = None):
     # Reset libinput
     cmd.terminate()
     cmd = listen_libinput()
+
+def verbose(message):
+    if args.verbose:
+        print(message)
+
+def debug(message):
+    if args.debug:
+        print(f'\033[93m{message}\033[0m', file = sys.stderr)
 
 class HANDLER:
     'Class for device handler objects'
@@ -448,13 +455,12 @@ class HANDLER:
         self.size = (sizex, sizey)
 
         self.state = {'disabled'} if self.capabilities.isdisjoint(actions.actions) else set()
-
-        return {'verbose': f'{'Ignoring' if 'disabled' in self.state else 'Adding   '} device {name:50} ({self.device}) {self.capabilities}'}
+        verbose(f'{'Ignoring' if 'disabled' in self.state else 'Adding   '} device {name:50} ({self.device}) {self.capabilities}')
 
     def remove(self):
         'Remove the handler for an unplugged device'
         del(handlers[self.device])
-        return {'verbose': f'Removing device  {self.name:50} ({self.device})'}
+        verbose(f'Removing device  {self.name:50} ({self.device})')
 
     def grab(self, *items):
         'Grab a handler and reset it, set the focused window class, and filter the reachable actions'
@@ -475,7 +481,8 @@ class HANDLER:
     def release(self, message = None):
         'Release a handler'
         self.state = set()
-        return {'verbose': message} if message else None
+        if message:
+            verbose(message)
 
     def reset(self):
         'Reset a handler gesture progression'
@@ -493,8 +500,7 @@ class HANDLER:
         for expr in exprs:
             command = command.replace(expr, str(eval(expr[1:-1], {}, data)))
 
-        if args.verbose:
-            print(f'\033[1m\033[92m  {command}\033[0m')
+        verbose(f'\033[1m\033[92m  {command}\033[0m')
 
         if not args.debug:
             subprocess.run(shlex.split(command))
@@ -502,7 +508,7 @@ class HANDLER:
     def switch(self, switch, state):
         'Handle a switch action'
         if self.state:
-            return self.release(f'Handler for device {self.device} is in use (shouldn\'t be possible!)')
+            return debug(f'Handler for device {self.device} is in use (shouldn\'t be possible!)')
 
         if self.grab('switch', switch, state):
             self.run(self.actions)
@@ -514,7 +520,7 @@ class HANDLER:
         # Only grab handler if not in a hold+ gesture
         if not 'holding' in self.state:
             if self.state:
-                return self.release(f'Handler for device {self.device} is busy (shouldn\'t be possible!)')
+                return debug(f'Handler for device {self.device} is busy (shouldn\'t be possible!)')
 
             if not self.grab(device_type, fingers):
                 return self.release(f'No gesture action with {fingers} fingers. Releasing handler')
@@ -522,7 +528,7 @@ class HANDLER:
     def update(self, time, fingers, x, y, ratio, angle):
         'Handle update event'
         if not self.state:
-            return {'verbose': 'Not listening to update events for this gesture'}
+            return verbose('Not listening to update events for this gesture')
 
         # Update handler data
         if ratio:
@@ -627,7 +633,7 @@ class HANDLER:
     def end(self, cancelled):
         'Handle end event'
         if not self.state:
-            return self.release(f'Skipping end for device {self.device} as there isn\'t anything to do with it')
+            return verbose(f'Skipping end for device {self.device} as there isn\'t anything to do with it')
 
         if 'holding' in self.state:
             if cancelled:
@@ -649,7 +655,7 @@ class HANDLER:
             if 'post' in self.available_actions:
                 self.run(self.available_actions['post'])
 
-        return self.release()
+        self.release()
 
     def parse(self, event, params):
         'Parse a libinput line and dispatch to the relevant listener'
@@ -662,8 +668,7 @@ class HANDLER:
         fields = self.params_re[event[0]].match(params)
 
         if not fields:
-            if args.debug:
-                print(f'\033[93mError parsing event {event[0]} params: {params}\033[0m', file = sys.stderr)
+            debug(f'Error parsing event {event[0]} params: {params}', file = sys.stderr)
             return
 
         fields = fields.groupdict()
@@ -673,51 +678,46 @@ class HANDLER:
 
         # Dispatch to the relevant listener
         answer = self.LISTENERS[event[0]](event[1:], monotonic(), **fields)
-        if answer:
-            if args.debug and 'debug' in answer:
-                print(f'\033[93m{answer['debug']}\033[0m', file = sys.stderr)
-            if args.verbose and 'verbose' in answer:
-                print(answer['verbose'])
 
     def listener_device(self, event, time, name, seat, group, capabilities, sizex, sizey):
         'Listener for DEVICE lines'
         if event[0] == 'ADDED':
-            return self.add(name, capabilities, sizex, sizey)
+            self.add(name, capabilities, sizex, sizey)
         elif event[0] == 'REMOVED':
-            return self.remove()
+            self.remove()
         else:
-            return {'debug': f'Device event {event} not recognized'}
+            debug(f'Device event {event} not recognized')
 
     def listener_switch(self, event, time, switch, state):
         'Listener for SWITCH lines'
         if event[0] == 'TOGGLE':
-            return self.switch(switch, state = 'on' if state == '1' else 'off')
+            self.switch(switch, state = 'on' if state == '1' else 'off')
         else:
-            return {'debug': f'Device event {event} not recognized'}
+            debug(f'Device event {event} not recognized')
 
     def listener_gesture(self, event, time, fingers, x, y, x2, y2, ratio, angle, cancelled):
         'Listener for GESTURE lines'
         fingers = int(fingers)
 
         if event[1] == 'BEGIN':
-            return self.begin('gesture', time, fingers)
+            self.begin('gesture', time, fingers)
         elif event[1] == 'UPDATE':
-            return self.update(time, fingers, x, y, ratio, angle)
+            self.update(time, fingers, x, y, ratio, angle)
         elif event[1] == 'END':
-            return self.end(cancelled)
+            self.end(cancelled)
         else:
-            return {'debug': f'Device event {event} not recognized'}
+            debug(f'Device event {event} not recognized')
 
     def listener_pointer(self, event, time, x, y, button, state, vert, horiz):
         'Listener for POINTER lines'
         if event[0] == 'SCROLL' and event[1] == 'FINGER':
             if not self.state:
-                return self.begin('gesture', time, 2)
+                self.begin('gesture', time, 2)
 
             if self.state and vert == '0.00' and horiz == '0.00':
-                return self.end(False)
+                self.end(False)
             else:
-                return self.update(time, 2, horiz, vert, None, None)
+                self.update(time, 2, horiz, vert, None, None)
 
         # BUTTON -> ignore? -> comment regex out so that it is not picked up ?
         # BUTTON : button pressed/released
@@ -854,7 +854,7 @@ def main():
     user = getpass.getuser()
     proglock = open_lock(PROGNAME, user)
     if not proglock:
-        sys.exit(f'\033[91m{PROGNAME} is already running for {user}, reloading conf')
+        sys.exit(f'\033[91m{PROGNAME} is already running for {user}, reloading conf\033[0m')
 
     # Restart when receiving SIGUSR1
     signal.signal(signal.SIGUSR1, reload)
@@ -863,10 +863,9 @@ def main():
     get_options()
 
     # Output various info/version info
-    if args.verbose:
-        xsession = os.getenv('XDG_SESSION_DESKTOP') or os.getenv('DESKTOP_SESSION') or 'unknown'
-        xtype = os.getenv('XDG_SESSION_TYPE') or 'unknown'
-        print(f'{PROGNAME}: session {xsession}+{xtype} on {platform.platform()}, python {platform.python_version()}')
+    xsession = os.getenv('XDG_SESSION_DESKTOP') or os.getenv('DESKTOP_SESSION') or 'unknown'
+    xtype = os.getenv('XDG_SESSION_TYPE') or 'unknown'
+    verbose(f'{PROGNAME}: session {xsession}+{xtype} on {platform.platform()}, python {platform.python_version()}')
 
     # Read and process the conf file
     read_conf(args.conffile, CONFNAME)
@@ -876,8 +875,7 @@ def main():
 
     handlers = {}
 
-    if args.verbose:
-        print('', 'LIBINPUT:', sep = '\n')
+    verbose('\nLIBINPUT:')
 
     # Ensure stdout it blocking at startup
     os.set_blocking(cmd.stdout.fileno(), True)
