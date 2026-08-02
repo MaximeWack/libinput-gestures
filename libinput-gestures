@@ -442,7 +442,7 @@ class HANDLER:
         self.state = set()
 
     def add(self, name, capabilities, sizex, sizey):
-        'Populate handler parameters and decide if it\'s enabled'
+        'Populate handler parameters and disable if none of its capabilities is used in configured actions'
         self.name = name
         self.capabilities = {v for k, v in self.cap_dict.items() if k in capabilities}
         self.size = (sizex, sizey)
@@ -456,13 +456,13 @@ class HANDLER:
         del(handlers[self.device])
         return {'verbose': f'Removing device  {self.name:50} ({self.device})'}
 
-    def grab(self, *items, state):
-        'Grab a handler and set its current device type, the focused window class, and the starting time'
+    def grab(self, *items):
+        'Grab a handler and reset it, set the focused window class, and filter the reachable actions'
         self.reset()
         self.actions = {k:v for k, v in actions.actions.items() if k in self.capabilities}
         self.available_actions = []
 
-        self.state = {state}
+        self.state = {'busy'}
         self.wclass = subprocess.run(['xdotool', 'getwindowfocus', 'getwindowclassname'], capture_output = True).stdout.decode('utf-8').strip()
 
         for item in items:
@@ -473,11 +473,12 @@ class HANDLER:
         return True
 
     def release(self, message = None):
-        'Release a handler and reset its state'
+        'Release a handler'
         self.state = set()
         return {'verbose': message} if message else None
 
     def reset(self):
+        'Reset a handler gesture progression'
         self.data = dict(x = 0, y = 0, dx = 0, dy = 0, ratio = 0, dratio = 0, angle = 0, dangle = 0)
         self.start_time = monotonic()
         self.available_gestures = []
@@ -507,7 +508,7 @@ class HANDLER:
         if self.state:
             return self.release(f'Handler for device {self.device} is in use (shouldn\'t be possible!)')
 
-        if self.grab('switch', switch, state, state = 'switch'):
+        if self.grab('switch', switch, state):
             self.run(self.actions)
 
         self.release()
@@ -519,7 +520,7 @@ class HANDLER:
             if self.state:
                 return self.release(f'Handler for device {self.device} is busy (shouldn\'t be possible!)')
 
-            if not self.grab(device_type, fingers, state = 'update'):
+            if not self.grab(device_type, fingers):
                 return self.release(f'No gesture action with {fingers} fingers. Releasing handler')
 
     def update(self, time, fingers, x, y, ratio, angle):
@@ -912,13 +913,13 @@ def main():
 
             # Break for holding handlers
             for _, handler in handlers.items():
-                if 'update' in handler.state:
+                if 'busy' in handler.state:
                     os.set_blocking(cmd.stdout.fileno(), False)
         else:
-            # Hold update
+            # Update on a timer (mainly to allow hold to happen)
             anyholding = False
             for _, handler in handlers.items():
-                if 'update' in handler.state:
+                if 'busy' in handler.state:
                     anyholding = True
                     handler.update(monotonic(), None, None, None, None, None)
 
