@@ -4,14 +4,15 @@
 
 import os
 import sys
-import argparse
 import subprocess
 import shlex
 import re
-import fcntl
-import platform
-import math
 import signal
+
+from math import log, pi, sqrt, asin
+from fcntl import lockf, LOCK_EX, LOCK_NB
+from platform import platform, python_version
+from argparse import ArgumentParser
 from time import monotonic
 from pathlib import Path
 
@@ -23,7 +24,7 @@ def lock():
     fp = Path('/tmp', PROGNAME + '-' + user + '.lock').open('w')
 
     try:
-        fcntl.lockf(fp, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        lockf(fp, LOCK_EX | LOCK_NB)
     except IOError:
         sys.exit(f'\033[91m{PROGNAME} is already running for {user}, exiting…\033[0m')
 
@@ -39,7 +40,7 @@ def listen_libinput():
 
 def get_options():
     'Parse the command-line options'
-    opt = argparse.ArgumentParser(description = __doc__)
+    opt = ArgumentParser(description = __doc__)
     opt.add_argument('-c',
                      '--conffile',
                      help = 'alternative configuration file')
@@ -503,7 +504,7 @@ class HANDLER:
 
         # Update handler data
         if ratio:
-            ratio = math.log(float(ratio))
+            ratio = log(float(ratio))
             angle = float(angle)
             self.data['dratio'] = ratio - self.data['dratio']
             self.data['ratio'] = ratio
@@ -528,7 +529,7 @@ class HANDLER:
         if not self.gesture:
             self.gesture = 'rotate' if 'rotate' in self.available_gestures and abs(angle) > options.angle_min_threshold \
                      else  'pinch'  if 'pinch'  in self.available_gestures and abs(ratio) > options.ratio_min_threshold \
-                     else  'swipe'  if 'swipe'  in self.available_gestures and math.sqrt(x ** 2 + y ** 2) > options.swipe_min_threshold \
+                     else  'swipe'  if 'swipe'  in self.available_gestures and sqrt(x ** 2 + y ** 2) > options.swipe_min_threshold \
                      else  'hold'   if 'hold'   in self.available_gestures and time - self.start_time > options.hold_min_threshold \
                 else None
 
@@ -552,7 +553,7 @@ class HANDLER:
 
         # Register motion only if over *_chain_threshold
         if 'chain' in self.state and \
-            ((self.gesture == 'swipe'  and math.sqrt(x ** 2 + y ** 2) < options.swipe_chain_threshold) or \
+            ((self.gesture == 'swipe'  and sqrt(x ** 2 + y ** 2) < options.swipe_chain_threshold) or \
              (self.gesture == 'pinch'  and abs(ratio) < options.ratio_chain_threshold) or \
              (self.gesture == 'rotate' and abs(angle) < options.angle_chain_threshold)):
             self.motion = None
@@ -721,12 +722,12 @@ class HANDLER:
 
             for point in points:
                 vec = diff(center, point)
-                dist += math.sqrt(vec[0]**2 + vec[1]**2)
+                dist += sqrt(vec[0]**2 + vec[1]**2)
 
             return dist / len(points)
 
         def norm_cross_prod(x1, y1, x2, y2):
-            return (x1*y2 - x2*y1) / (0.0000001 + math.sqrt(x1**2 + y1**2) * math.sqrt(x2**2 + y2**2))
+            return (x1*y2 - x2*y1) / (0.0000001 + sqrt(x1**2 + y1**2) * sqrt(x2**2 + y2**2))
 
         def calc_angle(startPos, lastPos, startCenter, lastCenter):
             angle = 0
@@ -736,7 +737,7 @@ class HANDLER:
             for i in range(0, len(startPos)):
                 x1, y1 = startPos[i]
                 x2, y2 = lastPos[i]
-                angle += math.asin(norm_cross_prod(x1 - xc1, y1 - yc1, x2 - xc2, y2 - yc2))
+                angle += asin(norm_cross_prod(x1 - xc1, y1 - yc1, x2 - xc2, y2 - yc2))
 
             return angle / len(startPos)
 
@@ -745,11 +746,11 @@ class HANDLER:
             lastCenter = center(lastPos)
 
             xrel, yrel = diff(startCenter, lastCenter)
-            dist = math.sqrt(xrel**2 + yrel**2)
+            dist = sqrt(xrel**2 + yrel**2)
 
             if len(lastPos) > 1:
                 ratio = mean_dist(lastPos, lastCenter) / mean_dist(startPos, startCenter)
-                angle = calc_angle(startPos, lastPos, startCenter, lastCenter) / math.pi * 180
+                angle = calc_angle(startPos, lastPos, startCenter, lastCenter) / pi * 180
             else:
                 ratio = 1
                 angle = 0
@@ -757,7 +758,7 @@ class HANDLER:
             if abs(angle) > options.angle_min_threshold:
                 return({'gesture': 'PINCH',
                         'params': [0, 0, 0, 0, ratio, angle]})
-            elif abs(math.log(ratio)) > options.ratio_min_threshold:
+            elif abs(log(ratio)) > options.ratio_min_threshold:
                 return({'gesture': 'PINCH',
                         'params': [0, 0, 0, 0, ratio, angle]})
             else:
@@ -830,7 +831,7 @@ proglock = lock()
 # Output various info/version info
 xsession = os.getenv('XDG_SESSION_DESKTOP') or os.getenv('DESKTOP_SESSION') or 'unknown'
 xtype = os.getenv('XDG_SESSION_TYPE') or 'unknown'
-verbose(f'{PROGNAME}: session {xsession}+{xtype} on {platform.platform()}, python {platform.python_version()}')
+verbose(f'{PROGNAME}: session {xsession}+{xtype} on {platform()}, python {python_version()}')
 
 conf = CONF_READER()
 conf.read()
