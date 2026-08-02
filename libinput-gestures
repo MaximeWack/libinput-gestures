@@ -11,6 +11,7 @@ import re
 import fcntl
 import platform
 import math
+import signal
 from time import monotonic
 from pathlib import Path
 
@@ -473,7 +474,7 @@ class HANDLER:
         verbose(f'\033[1m\033[92m  {command}\033[0m')
 
         if not args.debug:
-            subprocess.run(shlex.split(command))
+            subprocess.Popen(shlex.split(command))
 
     def switch(self, switch, state):
         'Handle a switch action'
@@ -837,6 +838,8 @@ conf.read()
 # Listen to libinput debug-events
 cmd = listen_libinput()
 handlers = {}
+
+signal.signal(signal.SIGCHLD, signal.SIG_IGN)
 
 # Ensure stdout it blocking at startup
 os.set_blocking(cmd.stdout.fileno(), True)
