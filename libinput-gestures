@@ -517,18 +517,6 @@ class HANDLER:
         else:
             return self.release(f'No action for switch {switch} {state}')
 
-    def hold(self):
-        'Soft reset handler for hold+ gesture'
-        self.state.add('holding')
-
-        self.data = dict(x = 0, y = 0, dx = 0, dy = 0, ratio = 0, dratio = 0, angle = 0, dangle = 0)
-        self.actions = self.actions['hold']
-
-        self.available_gestures = []
-        self.available_motions = []
-        self.gesture = None
-        self.motion = None
-
     def begin(self, device_type, gesture, time, fingers):
         'Handle begin event'
         # Only grab handler if not in a hold+ gesture
@@ -641,6 +629,19 @@ class HANDLER:
         # Set holding if holding still
         if not 'holding' in self.state and self.motion == 'still':
             self.hold()
+
+    def hold(self):
+        'Soft reset handler for hold+ gesture'
+        self.state.add('holding')
+
+        self.data = dict(x = 0, y = 0, dx = 0, dy = 0, ratio = 0, dratio = 0, angle = 0, dangle = 0)
+        self.actions = self.actions['hold']
+
+        self.available_gestures = []
+        self.available_motions = []
+        self.gesture = None
+        self.motion = None
+
 
     def end(self, cancelled):
         'Handle end event'
