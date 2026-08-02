@@ -16,6 +16,66 @@ from pathlib import Path
 
 PROGNAME = Path(sys.argv[0]).stem
 
+def lock():
+    'Create a lockfile'
+    user = os.getlogin()
+    fp = Path('/tmp', PROGNAME + '-' + user + '.lock').open('w')
+
+    try:
+        fcntl.lockf(fp, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except IOError:
+        sys.exit(f'\033[91m{PROGNAME} is already running for {user}, exiting…\033[0m')
+
+    return fp
+
+def listen_libinput():
+    'Run libinput debug-events and listen to its output'
+    # User needs to belong to the input group to access the device ('sudo gpasswd -a $USER input') then log out/in
+    return subprocess.Popen(shlex.split(f'stdbuf -oL -- libinput debug-events'),
+                           stdout = subprocess.PIPE,
+                           bufsize = 1,
+                           universal_newlines = True)
+
+def get_options():
+    'Parse the command-line options'
+    opt = argparse.ArgumentParser(description = __doc__)
+    opt.add_argument('-c',
+                     '--conffile',
+                     help = 'alternative configuration file')
+    opt.add_argument('-v',
+                     '--verbose',
+                     action = 'store_true',
+                     help = 'output diagnostic messages')
+    opt.add_argument('-d',
+                     '--debug',
+                     action = 'store_true',
+                     help = 'output diagnostic messages only, do not action gestures')
+    opt.add_argument('-r',
+                     '--raw',
+                     action = 'store_true',
+                     help = 'output raw libinput output')
+    for option, params in options.available.items():
+        opt.add_argument('--' + option,
+                         help = params['help'])
+    args = opt.parse_args()
+
+    if args.debug:
+        args.verbose = True
+
+    return args
+
+def verbose(message):
+    if args.verbose:
+        print(message)
+
+def debug(message):
+    if args.debug:
+        print(f'\033[93m{message}\033[0m', file = sys.stderr)
+
+def raw(message):
+    if args.raw:
+        print(f'\033[95m{message}\033[0m')
+
 class OPTIONS:
     'Singleton class for storing options'
 
@@ -241,6 +301,8 @@ class CONF_READER:
         verbose('\nACTIONS:')
         verbose(actions)
 
+        verbose('')
+
     def get_line(self, line):
         'Process a single line of conf file'
         # Handle action prefix
@@ -302,66 +364,6 @@ class CONF_READER:
             self.instance = super().__new__(self)
 
         return self.instance
-
-def lock():
-    'Create a lockfile'
-    user = os.getlogin()
-    fp = Path('/tmp', PROGNAME + '-' + user + '.lock').open('w')
-
-    try:
-        fcntl.lockf(fp, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except IOError:
-        sys.exit(f'\033[91m{PROGNAME} is already running for {user}, exiting…\033[0m')
-
-    return fp
-
-def listen_libinput():
-    'Run libinput debug-events and listen to its output'
-    # User needs to belong to the input group to access the device ('sudo gpasswd -a $USER input') then log out/in
-    return subprocess.Popen(shlex.split(f'stdbuf -oL -- libinput debug-events'),
-                           stdout = subprocess.PIPE,
-                           bufsize = 1,
-                           universal_newlines = True)
-
-def get_options():
-    'Parse the command-line options'
-    opt = argparse.ArgumentParser(description = __doc__)
-    opt.add_argument('-c',
-                     '--conffile',
-                     help = 'alternative configuration file')
-    opt.add_argument('-v',
-                     '--verbose',
-                     action = 'store_true',
-                     help = 'output diagnostic messages')
-    opt.add_argument('-d',
-                     '--debug',
-                     action = 'store_true',
-                     help = 'output diagnostic messages only, do not action gestures')
-    opt.add_argument('-r',
-                     '--raw',
-                     action = 'store_true',
-                     help = 'output raw libinput output')
-    for option, params in options.available.items():
-        opt.add_argument('--' + option,
-                         help = params['help'])
-    args = opt.parse_args()
-
-    if args.debug:
-        args.verbose = True
-
-    return args
-
-def verbose(message):
-    if args.verbose:
-        print(message)
-
-def debug(message):
-    if args.debug:
-        print(f'\033[93m{message}\033[0m', file = sys.stderr)
-
-def raw(message):
-    if args.raw:
-        print(f'\033[95m{message}\033[0m')
 
 class HANDLER:
     'Class for device handler objects'
