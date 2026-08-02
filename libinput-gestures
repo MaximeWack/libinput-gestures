@@ -487,11 +487,7 @@ class HANDLER:
         self.motion = None
 
     def run(self, command):
-        'Run the given command'
-        if not command:
-            return self.release(f'No command to execute. Releasing handler')
-
-        # Replace {} in commands
+        'Run the given command with replacement of {}'
         data = {k: int(v) for k, v in self.data.items()}
         exprs = re.findall(r'\{[^\{\}]+\}', command)
         for expr in exprs:
