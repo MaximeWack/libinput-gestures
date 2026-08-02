@@ -66,21 +66,20 @@ def get_options():
                          help = params['help'])
     args = opt.parse_args()
 
-    if args.debug:
-        args.verbose = True
+    args.verbose = args.verbose or args.debug
 
     return args
 
 def verbose(message):
-    if args.verbose:
+    if args.verbose and message:
         print(message)
 
 def debug(message):
-    if args.debug:
+    if args.debug and message:
         print(f'\033[93m{message}\033[0m', file = sys.stderr)
 
 def raw(message):
-    if args.raw:
+    if args.raw and message:
         print(f'\033[95m{message}\033[0m')
 
 class OPTIONS:
@@ -308,7 +307,7 @@ class CONF_READER:
         verbose('\nACTIONS:')
         verbose(actions)
 
-        verbose('')
+        verbose(' ')
 
     def get_line(self, line):
         'Process a single line of conf file'
@@ -461,8 +460,7 @@ class HANDLER:
     def release(self, message = None):
         'Release a handler'
         self.state = set()
-        if message:
-            verbose(message)
+        verbose(message)
 
     def reset(self):
         'Reset a handler gesture progression'
@@ -488,9 +486,8 @@ class HANDLER:
     def switch(self, switch, state):
         'Handle a switch action'
         if self.state:
-            return debug(f'Handler for device {self.device} is in use (shouldn\'t be possible!)')
-
-        if self.grab('switch', switch, state):
+            debug(f'Handler for device {self.device} is in use (shouldn\'t be possible!)')
+        elif self.grab('switch', switch, state):
             self.run(self.actions)
 
         self.release()
@@ -500,10 +497,9 @@ class HANDLER:
         # Only grab handler if not in a hold+ gesture
         if not 'holding' in self.state:
             if self.state:
-                return debug(f'Handler for device {self.device} is busy (shouldn\'t be possible!)')
-
-            if not self.grab(device_type, fingers):
-                return self.release(f'No gesture action with {fingers} fingers. Releasing handler')
+                debug(f'Handler for device {self.device} is busy (shouldn\'t be possible!)')
+            elif not self.grab(device_type, fingers):
+                self.release(f'No gesture action with {fingers} fingers. Releasing handler')
 
     def update(self, time, fingers, x, y, ratio, angle):
         'Handle update event'
@@ -547,7 +543,7 @@ class HANDLER:
             self.available_motions = {k for k, v in res.items() if (not {self.wclass, None}.isdisjoint(list(v)) and k != 'apps')}
 
         # Determine motion
-        if self.available_motions and not self.motion:
+        if not self.motion:
             self.motion = 'up'    if 'up'    in self.available_motions and abs(y) > abs(x) and y < 0 \
                      else 'down'  if 'down'  in self.available_motions and abs(y) > abs(x) and y > 0 \
                      else 'left'  if 'left'  in self.available_motions and abs(x) > abs(y) and x < 0 \
@@ -571,38 +567,36 @@ class HANDLER:
             res = self.actions[self.gesture][self.motion]
             self.available_actions = res[self.wclass] if self.wclass in res else res[None]
 
-        # Run early actions (pre, chain, continuous)
-        if self.available_actions:
-            # Reset motion if only end action to mimic legacy behavior
-            if list(self.available_actions) == ['end']:
-                self.motion = None
+        # Reset motion if only end action to mimic legacy behavior
+        if list(self.available_actions) == ['end']:
+            self.motion = None
 
-            # Discard non chaining motions when chaining
-            if 'chain' in self.state and 'chain' not in self.available_actions:
-                self.motion = None
-                self.available_actions = []
-                return
+        # Discard non chaining motions when chaining
+        if 'chain' in self.state and 'chain' not in self.available_actions:
+            self.motion = None
+            self.available_actions = []
+            return
 
-            # Execute pre action only once
-            if 'pre' in self.available_actions and not 'pre' in self.state:
-                self.run(self.available_actions['pre'])
-                self.state.add('pre')
+        # Execute pre action only once
+        if 'pre' in self.available_actions and not 'pre' in self.state:
+            self.run(self.available_actions['pre'])
+            self.state.add('pre')
 
-            # Execute continuous action every timer tick and reset time and delta data
-            if 'continuous' in self.available_actions and time - self.start_time > options.update_timer:
-                self.run(self.available_actions['continuous'])
-                self.start_time = time
-                self.data['dx'] = 0
-                self.data['dy'] = 0
-                self.data['dangle'] = 0
-                self.data['dratio'] = 0
+        # Execute continuous action every timer tick and reset time and delta data
+        if 'continuous' in self.available_actions and time - self.start_time > options.update_timer:
+            self.run(self.available_actions['continuous'])
+            self.start_time = time
+            self.data['dx'] = 0
+            self.data['dy'] = 0
+            self.data['dangle'] = 0
+            self.data['dratio'] = 0
 
-            # Execute chain action and reset prior to determining motion
-            if 'chain' in self.available_actions and self.motion:
-                self.run(self.available_actions['chain'])
-                self.state.add('chain')
-                self.motion = None
-                self.data = dict(x = 0, y = 0, dx = 0, dy = 0, angle = 0, ratio = 0, dangle = 0, dratio = 0)
+        # Execute chain action and reset prior to determining motion
+        if 'chain' in self.available_actions and self.motion:
+            self.run(self.available_actions['chain'])
+            self.state.add('chain')
+            self.motion = None
+            self.data = dict(x = 0, y = 0, dx = 0, dy = 0, angle = 0, ratio = 0, dangle = 0, dratio = 0)
 
         # Set holding if holding still
         if not 'holding' in self.state and self.motion == 'still':
@@ -615,25 +609,22 @@ class HANDLER:
         if not self.state:
             return verbose(f'Skipping end for device {self.device} as there isn\'t anything to do with it')
 
-        if 'holding' in self.state:
-            if cancelled:
-                if not self.gesture and list(self.actions) != ['still', 'apps']:
-                    return
-                elif self.gesture and list(self.actions) != ['still', 'apps']:
-                    pass
-                else:
-                    return self.release(f'No hold+ action. Releasing handler')# if list(self.actions) == ['still', 'apps'] else None
-        else:
-            if not self.gesture:
-                return self.release(f'Hold too short') if 'hold' in self.available_gestures else self.release()
+        if 'holding' in self.state and cancelled:
+            if not self.gesture and list(self.actions) != ['still', 'apps']:
+                return
+            elif self.gesture and list(self.actions) != ['still', 'apps']:
+                pass
+            else:
+                return self.release(f'No hold+ action. Releasing handler') # does not trigger for trying hold+ from non-HOLD hold (because it doesn't cancel)
 
-        # Run late actions (end, post)
-        if self.available_actions:
-            if 'end' in self.available_actions and not cancelled:
-                self.run(self.available_actions['end'])
+        if not self.gesture and 'hold' in self.available_gestures:
+            self.release(f'Hold too short')
 
-            if 'post' in self.available_actions:
-                self.run(self.available_actions['post'])
+        if 'end' in self.available_actions and not cancelled:
+            self.run(self.available_actions['end'])
+
+        if 'post' in self.available_actions:
+            self.run(self.available_actions['post'])
 
         self.release()
 
@@ -648,8 +639,7 @@ class HANDLER:
         fields = self.params_re[event[0]].match(params)
 
         if not fields:
-            debug(f'Error parsing event {event[0]} params: {params}', file = sys.stderr)
-            return
+            return debug(f'Error parsing event {event[0]} params: {params}', file = sys.stderr)
 
         fields = fields.groupdict()
 
