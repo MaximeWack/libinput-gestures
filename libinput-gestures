@@ -798,9 +798,12 @@ class HANDLER:
                 return({'gesture': 'SWIPE',
                         'params': [0, 0, xrel, yrel]})
 
+        # motion > .5mm : go from hold to gesture
+        # quick hold? timeout : 40ms
+        # hold timeout : 180ms
+
         # Should be able so send:
-        # self.hold('touch', BEGIN|END, time, fingers, cancelled)
-        # self.begin('touch', PINCH, time, fingers)
+        # self.begin('touch', time, fingers)
         # self.update(time, fingers, x, y, ratio, angle)
         # self.end(cancelled)
 
