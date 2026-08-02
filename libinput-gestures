@@ -524,7 +524,7 @@ class HANDLER:
             if self.state:
                 return self.release(f'Handler for device {self.device} is busy (shouldn\'t be possible!)')
 
-            if not self.grab(device_type, fingers, state = {'pre', 'update', gesture}):
+            if not self.grab(device_type, fingers, state = 'update'):
                 return self.release(f'No gesture action with {fingers} fingers. Releasing handler')
 
     def update(self, time, fingers, x, y, ratio, angle):
@@ -606,9 +606,9 @@ class HANDLER:
                 return
 
             # Execute pre action only once
-            if 'pre' in self.available_actions and 'pre' in self.state:
+            if 'pre' in self.available_actions and not 'pre' in self.state:
                 self.run(self.available_actions['pre'])
-                self.state.remove('pre')
+                self.state.add('pre')
 
             # Execute continuous action every timer tick and reset time and delta data
             if 'continuous' in self.available_actions and time - self.start_time > options.update_timer:
