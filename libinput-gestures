@@ -517,7 +517,7 @@ class HANDLER:
         else:
             return self.release(f'No action for switch {switch} {state}')
 
-    def begin(self, device_type, gesture, time, fingers):
+    def begin(self, device_type, time, fingers):
         'Handle begin event'
         # Only grab handler if not in a hold+ gesture
         if not 'holding' in self.state:
@@ -719,7 +719,7 @@ class HANDLER:
         fingers = int(fingers)
 
         if event[1] == 'BEGIN':
-            return self.begin('gesture', event[0], time, fingers)
+            return self.begin('gesture', time, fingers)
         elif event[1] == 'UPDATE':
             return self.update(time, fingers, x, y, ratio, angle)
         elif event[1] == 'END':
@@ -731,7 +731,7 @@ class HANDLER:
         'Listener for POINTER lines'
         if event[0] == 'SCROLL' and event[1] == 'FINGER':
             if not self.state:
-                return self.begin('gesture', 'SWIPE', time, 2)
+                return self.begin('gesture', time, 2)
 
             if self.state and vert == '0.00' and horiz == '0.00':
                 return self.end(False)
