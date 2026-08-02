@@ -447,7 +447,7 @@ class HANDLER:
         self.capabilities = {v for k, v in self.cap_dict.items() if k in capabilities}
         self.size = (sizex, sizey)
 
-        self.release()
+        self.state = {'disabled'} if self.capabilities.isdisjoint(actions.actions) else set()
 
         return {'verbose': f'{'Ignoring' if 'disabled' in self.state else 'Adding   '} device {name:50} ({self.device}) {self.capabilities}'}
 
@@ -458,13 +458,12 @@ class HANDLER:
 
     def grab(self, *items, state):
         'Grab a handler and set its current device type, the focused window class, and the starting time'
-        if type(state).__name__ == 'set':
-            self.state = state
-        elif type(state).__name__ == 'str':
-            self.state = {state}
+        self.reset()
+        self.actions = {k:v for k, v in actions.actions.items() if k in self.capabilities}
+        self.available_actions = []
 
+        self.state = {state}
         self.wclass = subprocess.run(['xdotool', 'getwindowfocus', 'getwindowclassname'], capture_output = True).stdout.decode('utf-8').strip()
-        self.start_time = monotonic()
 
         for item in items:
            self.actions = self.actions.get(item)
@@ -475,19 +474,16 @@ class HANDLER:
 
     def release(self, message = None):
         'Release a handler and reset its state'
+        self.state = set()
+        return {'verbose': message} if message else None
+
+    def reset(self):
         self.data = dict(x = 0, y = 0, dx = 0, dy = 0, ratio = 0, dratio = 0, angle = 0, dangle = 0)
-        self.actions = {k:v for k, v in actions.actions.items() if k in self.capabilities}
-
-        self.state = set() if self.actions else {'disabled'}
-
+        self.start_time = monotonic()
         self.available_gestures = []
         self.available_motions = []
-        self.available_actions = []
         self.gesture = None
         self.motion = None
-        self.wclass = None
-
-        return {'verbose': message} if message else None
 
     def run(self, command):
         'Run the given command'
@@ -513,9 +509,8 @@ class HANDLER:
 
         if self.grab('switch', switch, state, state = 'switch'):
             self.run(self.actions)
-            self.release()
-        else:
-            return self.release(f'No action for switch {switch} {state}')
+
+        self.release()
 
     def begin(self, device_type, time, fingers):
         'Handle begin event'
@@ -629,14 +624,8 @@ class HANDLER:
         # Set holding if holding still
         if not 'holding' in self.state and self.motion == 'still':
             self.state.add('holding')
-
-            self.data = dict(x = 0, y = 0, dx = 0, dy = 0, ratio = 0, dratio = 0, angle = 0, dangle = 0)
             self.actions = self.actions['hold']
-
-            self.available_gestures = []
-            self.available_motions = []
-            self.gesture = None
-            self.motion = None
+            self.reset()
 
     def end(self, cancelled):
         'Handle end event'
