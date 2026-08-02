@@ -660,32 +660,24 @@ class HANDLER:
 
     def listener_device(self, event, time, name, seat, group, capabilities, sizex, sizey):
         'Listener for DEVICE lines'
-        if event[0] == 'ADDED':
-            self.add(name, capabilities, sizex, sizey)
-        elif event[0] == 'REMOVED':
-            self.remove()
-        else:
-            debug(f'Device event {event} not recognized')
+        match event[0]:
+            case 'ADDED'  : self.add(name, capabilities, sizex, sizey)
+            case 'REMOVED': self.remove()
+            case _        : debug(f'Device event {event} not recognized')
 
     def listener_switch(self, event, time, switch, state):
         'Listener for SWITCH lines'
-        if event[0] == 'TOGGLE':
-            self.switch(switch, state = 'on' if state == '1' else 'off')
-        else:
-            debug(f'Device event {event} not recognized')
+        match event[0]:
+            case 'TOGGLE': self.switch(switch, state = 'on' if state == '1' else 'off')
+            case _       : debug(f'Device event {event} not recognized')
 
     def listener_gesture(self, event, time, fingers, x, y, x2, y2, ratio, angle, cancelled):
         'Listener for GESTURE lines'
-        fingers = int(fingers)
-
-        if event[1] == 'BEGIN':
-            self.begin('gesture', time, fingers)
-        elif event[1] == 'UPDATE':
-            self.update(time, fingers, x, y, ratio, angle)
-        elif event[1] == 'END':
-            self.end(cancelled)
-        else:
-            debug(f'Device event {event} not recognized')
+        match event[1]:
+            case 'BEGIN' : self.begin('gesture', time, int(fingers))
+            case 'UPDATE': self.update(time, fingers, x, y, ratio, angle)
+            case 'END'   : self.end(cancelled)
+            case _       : debug(f'Device event {event} not recognized')
 
     def listener_pointer(self, event, time, x, y, button, state, vert, horiz):
         'Listener for POINTER lines'
@@ -777,10 +769,15 @@ class HANDLER:
         # quick hold? timeout : 40ms
         # hold timeout : 180ms
 
-        # Should be able so send:
+        # Should be able to send:
         # self.begin('touch', time, fingers)
         # self.update(time, fingers, x, y, ratio, angle)
         # self.end(cancelled)
+
+        match event[0]:
+            case 'UP'    : pass
+            case 'DOWN'  : pass
+            case 'MOTION': pass
 
         # # Stuff for touch
         # nfingers = 0
