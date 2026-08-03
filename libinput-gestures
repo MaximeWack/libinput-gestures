@@ -400,9 +400,10 @@ class HANDLER:
                                 \s+ (?P<switch> tablet-mode | lid | keypad-slide) # Switch name
                                 \s* state \s+ (?P<state> 0 | 1)                   # State """, flags = re.VERBOSE),
 
-        TOUCH = re.compile(r"""(?P<finger> \d)?                              # Finger
+        TOUCH = re.compile(r"""(?P<finger> \d)?                                   # Finger
                             \s* \( (?P=finger) \)?
-                            \s* ((?P<x> \d+\.\d+) /\s* (?P<y> \d+\.\d+))? # Absolute position 0-100% of width/height """, flags = re.VERBOSE),
+                            \s* ((?: \d+\.\d+) /\s* (?: \d+\.\d+))?               # Absolute position 0-100% of width/height
+                            \s* (\( (?P<x> \d+\.\d+) /\s* (?P<y> \d+\.\d+) mm\))? # Absolute position in mm""", flags = re.VERBOSE),
 
         GESTURE = re.compile(r"""(?P<fingers> \d)                                                  # Fingers
                                 \s* (?P<cancelled>cancelled)?
@@ -693,12 +694,11 @@ class HANDLER:
         # x = x and float(x)
         # y = y and float(y)
 
-    # TOUCH_(?P<event> UP | DOWN | FRAME | MOTION)
     def listener_touch(self, event, time, finger, x, y):
         'Listener for TOUCH lines'
         finger = int(finger)
-        x = x and float(x)
-        y = y and float(y)
+        x = x and float(x) * 10
+        y = y and float(y) * 10
 
         def center(points):
             center = [0, 0]
