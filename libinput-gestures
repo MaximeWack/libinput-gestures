@@ -205,14 +205,18 @@ class ACTIONS:
                     self.actions[r][fingers]['hold'][action]['apps'] = set()
 
                 self.actions[r][fingers]['hold'][action]['apps'].add(wclass)
-                action = 'hold'
+
+                if not self.actions[r][fingers]['hold'].get('apps'):
+                    self.actions[r][fingers]['hold']['apps'] = set()
+
+                self.actions[r][fingers]['hold']['apps'].add(wclass)
             else:
                 self.build_path(r, fingers, action, motion, wclass, modifier, command = command)
 
-            if not self.actions[r][fingers][action].get('apps'):
-                self.actions[r][fingers][action]['apps'] = set()
+                if not self.actions[r][fingers][action].get('apps'):
+                    self.actions[r][fingers][action]['apps'] = set()
 
-            self.actions[r][fingers][action]['apps'].add(wclass)
+                self.actions[r][fingers][action]['apps'].add(wclass)
 
     def build_path(self, *args, command):
         'Construct the actions dict object up to the given path'
