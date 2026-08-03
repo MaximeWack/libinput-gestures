@@ -706,8 +706,8 @@ class HANDLER:
     def listener_touch(self, event, time, finger, x, y):
         'Listener for TOUCH lines'
         finger = int(finger)
-        x = x and float(x) * 10
-        y = y and float(y) * 10
+        x = x and float(x) * 5
+        y = y and float(y) * 5
 
         def center(points):
             center = [0, 0]
