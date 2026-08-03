@@ -446,7 +446,11 @@ class HANDLER:
 
         self.state = {'busy'}
         if Xlib.display:
-            _, self.wclass = Xlib.display.Display().get_input_focus().focus.get_wm_class()
+            wm_class = Xlib.display.Display().get_input_focus().focus.get_wm_class()
+            if wm_class:
+                _, self.wclass = wm_class
+            else:
+                self.wclass = None
         else:
             self.wclass = None
 
