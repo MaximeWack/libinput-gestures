@@ -91,9 +91,6 @@ class OPTIONS:
         ratio_min_threshold    = dict(default = .4   , valid = float, help = 'Minimum ratio to register a pinch'),
         angle_min_threshold    = dict(default = 50   , valid = float, help = 'Minimum angle to register a rotation'),
         hold_min_threshold     = dict(default = .3   , valid = float, help = 'Minimum time (in s) to register a hold'),
-        swipe_chain_threshold  = dict(default = 120  , valid = float, help = 'Minimum travel distance to register a chained swipe'),
-        ratio_chain_threshold  = dict(default = .4   , valid = float, help = 'Minimum ratio to register a chained pinch'),
-        angle_chain_threshold  = dict(default = 50  , valid = float, help = 'Minimum angle to register a chained rotation'),
         touch_finger_tolerance = dict(default = .1   , valid = float, help = 'Time before registering finger number change'),
         update_timer           = dict(default = .1   , valid = float, help = 'Time interval at which update a continuous motion'))
 
@@ -571,11 +568,11 @@ class HANDLER:
                      else 'still' if 'still' in self.available_motions \
                      else None
 
-        # Register motion only if over *_chain_threshold
+        # Register motion only if over threshold
         if 'chain' in self.state and \
-            ((self.gesture == 'swipe'  and sqrt(x ** 2 + y ** 2) < options.swipe_chain_threshold) or \
-             (self.gesture == 'pinch'  and abs(ratio) < options.ratio_chain_threshold) or \
-             (self.gesture == 'rotate' and abs(angle) < options.angle_chain_threshold)):
+            ((self.gesture == 'swipe'  and sqrt(x ** 2 + y ** 2) < options.swipe_min_threshold) or \
+             (self.gesture == 'pinch'  and abs(ratio) < options.ratio_min_threshold) or \
+             (self.gesture == 'rotate' and abs(angle) < options.angle_min_threshold)):
             self.motion = None
 
         # Get available actions
