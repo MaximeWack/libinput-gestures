@@ -470,6 +470,7 @@ class HANDLER:
         'Reset a handler gesture progression'
         self.data = dict(x = 0, y = 0, dx = 0, dy = 0, ratio = 0, dratio = 0, angle = 0, dangle = 0)
         self.start_time = monotonic()
+        self.last_time = self.start_time
         self.available_gestures = []
         self.available_motions = []
         self.gesture = None
@@ -879,7 +880,9 @@ def main():
             for _, handler in handlers.items():
                 if 'busy' in handler.state:
                     anyholding = True
-                    handler.update(monotonic(), None, None, None, None, None)
+                    if monotonic() - handler.last_time > options.update_timer:
+                        handler.update(monotonic(), None, None, None, None, None)
+                        handler.last_time = monotonic()
 
             if not anyholding:
                 os.set_blocking(cmd.stdout.fileno(), True)
