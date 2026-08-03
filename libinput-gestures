@@ -622,13 +622,13 @@ class HANDLER:
         if not self.state:
             return verbose(f'Skipping end for device {self.device} as there isn\'t anything to do with it')
 
-        if 'holding' in self.state and cancelled:
-            if not self.gesture and list(self.actions) != ['still', 'apps']:
+        # going from 3 holding without moving to 4 swipe does 3 hold+swipe
+        if 'holding' in self.state:
+            if list(self.actions) == ['still', 'apps']:
+                return self.release(f'No hold+ action. Releasing handler')
+
+            if not self.gesture and cancelled:
                 return
-            elif self.gesture and list(self.actions) != ['still', 'apps']:
-                pass
-            else:
-                return self.release(f'No hold+ action. Releasing handler') # does not trigger for trying hold+ from non-HOLD hold (because it doesn't cancel)
 
         if not self.gesture and 'hold' in self.available_gestures:
             self.release(f'Hold too short')
