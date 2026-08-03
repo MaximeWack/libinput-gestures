@@ -424,6 +424,9 @@ class HANDLER:
                               SWITCH  = self.listener_switch,
                               POINTER = self.listener_pointer)
         self.state = set()
+        self.fingers = 0
+        self.startPos = []
+        self.lastPos = []
 
     def add(self, name, capabilities, sizex, sizey):
         'Populate handler parameters and disable if none of its capabilities is used in configured actions'
@@ -736,87 +739,43 @@ class HANDLER:
 
             return angle / len(startPos)
 
-        def touch_gesture(startPos, lastPos):
-            startCenter = center(startPos)
-            lastCenter = center(lastPos)
+        if self.fingers > 0:
+            startCenter = center(self.startPos)
+            lastCenter = center(self.lastPos)
 
             xrel, yrel = diff(startCenter, lastCenter)
             dist = sqrt(xrel**2 + yrel**2)
 
-            if len(lastPos) > 1:
-                ratio = mean_dist(lastPos, lastCenter) / mean_dist(startPos, startCenter)
-                angle = calc_angle(startPos, lastPos, startCenter, lastCenter) / pi * 180
-            else:
-                ratio = 1
-                angle = 0
-
-            if abs(angle) > options.angle_min_threshold:
-                return({'gesture': 'PINCH',
-                        'params': [0, 0, 0, 0, ratio, angle]})
-            elif abs(log(ratio)) > options.ratio_min_threshold:
-                return({'gesture': 'PINCH',
-                        'params': [0, 0, 0, 0, ratio, angle]})
-            else:
-                return({'gesture': 'SWIPE',
-                        'params': [0, 0, xrel, yrel]})
-
-        # motion > .5mm : go from hold to gesture
-        # quick hold? timeout : 40ms
-        # hold timeout : 180ms
-
-        # Should be able to send:
-        # self.begin('touch', time, fingers)
-        # self.update(time, fingers, x, y, ratio, angle)
-        # self.end(cancelled)
+        if self.fingers > 1:
+            ratio = mean_dist(self.lastPos, lastCenter) / mean_dist(self.startPos, startCenter)
+            angle = calc_angle(self.startPos, self.lastPos, startCenter, lastCenter) / pi * 180
+        else:
+            ratio = 1
+            angle = 0
 
         match event[0]:
-            case 'UP'    : pass
-            case 'DOWN'  : pass
-            case 'MOTION': pass
+            case 'DOWN':
+                self.end(True)
+                self.fingers += 1
+                self.startPos = self.lastPos.copy()
+                self.lastPos.append((x, y))
+                self.startPos.append((x, y))
+                self.begin('touch', time, self.fingers)
 
-        # # Stuff for touch
-        # nfingers = 0
-        # lastPos = []
-        # startPos = []
-        # ready = True
+            case 'MOTION':
+                self.startPos = self.lastPos.copy()
+                self.lastPos[finger] = (x, y)
+                self.update(time, self.fingers, xrel, yrel, ratio, angle)
 
-    #     if ready:
-    #         # Track each new finger and store its starting position
-    #         # Build an array of starting position and last know position for each finger, and increment number of fingers
-    #         if event == 'DOWN':
-    #             lastPos.append((x, y))
-    #             startPos = lastPos.copy()
-    #             nfingers += 1
-
-    #         # Follow last known position for each finger
-    #         if nfingers > 0 and event == 'MOTION':
-    #             lastPos[finger] = (x, y)
-
-    #         # Trigger gesture at the first lifted finger
-    #         # and stop reading new events until all fingers are up
-    #         if nfingers > 0 and event == 'UP':
-    #             gesture, params = touch_gesture(startPos, lastPos).values()
-    #             handler = handlers.get(gesture)
-
-    #             if handler:
-    #                 handler.begin(str(nfingers), time, options.swipe_min_threshold)
-    #                 handler.update(params, time)
-    #                 handler.end()
-    #                 handler = None
-    #             else:
-    #                 print(f'Unknown gesture received: {gesture}.', file = sys.stderr)
-
-    #             ready = False
-    #             nfingers -= 1
-    #     else:
-    #         # After the gesture is sent, wait for all fingers to be released
-    #         nfingers += (event == 'DOWN') - (event == 'UP')
-
-    #         # and reset the logic
-    #         if nfingers == 0:
-    #             lastPos = []
-    #             startPos = []
-    #             ready = True
+            # Need a timeout to allow ending without cancelling
+            case 'UP':
+                self.end(False)
+                self.fingers -= 1
+                if self.fingers > 0:
+                    self.begin('touch', time, self.fingers)
+                else:
+                    self.lastPos = []
+                    self.startPos = []
 
 # Set up everything before running the main loop
 options = OPTIONS()
