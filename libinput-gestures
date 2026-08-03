@@ -644,7 +644,7 @@ class HANDLER:
         fields = self.params_re[event[0]].match(params)
 
         if not fields:
-            return debug(f'Error parsing event {event[0]} params: {params}', file = sys.stderr)
+            return debug(f'Error parsing event {event[0]} params: {params}')
 
         fields = fields.groupdict()
 
