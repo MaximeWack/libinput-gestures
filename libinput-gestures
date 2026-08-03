@@ -405,7 +405,7 @@ class HANDLER:
                                 \s* state \s+ (?P<state> 0 | 1)                   # State """, flags = re.VERBOSE),
 
         TOUCH = re.compile(r"""(?P<finger> \d)?                                   # Finger
-                            \s* \( (?P=finger) \)?
+                            \s* \( (?: \d) \)?
                             \s* ((?: \d+\.\d+) /\s* (?: \d+\.\d+))?               # Absolute position 0-100% of width/height
                             \s* (\( (?P<x> \d+\.\d+) /\s* (?P<y> \d+\.\d+) mm\))? # Absolute position in mm""", flags = re.VERBOSE),
 
