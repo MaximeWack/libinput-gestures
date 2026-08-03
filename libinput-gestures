@@ -612,7 +612,7 @@ class HANDLER:
             self.data = dict(x = 0, y = 0, dx = 0, dy = 0, angle = 0, ratio = 0, dangle = 0, dratio = 0)
 
         # Set holding if holding still
-        if not 'holding' in self.state and self.motion == 'still':
+        if not 'holding' in self.state and self.gesture == 'hold':
             self.state.add('holding')
             self.actions = self.actions['hold']
             self.reset()
