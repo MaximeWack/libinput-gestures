@@ -429,7 +429,9 @@ class HANDLER:
                               POINTER = self.listener_pointer)
         self.state = set()
         self.fingers = 0
+        self.fingers_ = 0
         self.startPos = []
+        self.prevPos = []
         self.lastPos = []
 
     def add(self, name, capabilities, sizex, sizey):
@@ -743,43 +745,61 @@ class HANDLER:
 
             return angle / len(startPos)
 
-        if self.fingers > 0:
+        if self.fingers_ > 0:
             startCenter = center(self.startPos)
+            prevCenter = center(self.prevPos)
             lastCenter = center(self.lastPos)
 
-            xrel, yrel = diff(startCenter, lastCenter)
-            dist = sqrt(xrel**2 + yrel**2)
+            xrel, yrel = diff(prevCenter, lastCenter)
 
-        if self.fingers > 1:
-            ratio = mean_dist(self.lastPos, lastCenter) / mean_dist(self.startPos, startCenter)
-            angle = calc_angle(self.startPos, self.lastPos, startCenter, lastCenter) / pi * 180
-        else:
             ratio = 1
             angle = 0
+            if self.fingers_ > 1:
+                ratio = mean_dist(self.lastPos, lastCenter) / mean_dist(self.startPos, startCenter)
+                angle = calc_angle(self.prevPos, self.lastPos, prevCenter, lastCenter) / pi * 180
+        else:
+            xrel = None
+            yrel = None
+            ratio = None
+            angle = None
 
         match event[0]:
             case 'DOWN':
-                self.end(True)
-                self.fingers += 1
+                self.fingers_ += 1
+                self.finger_time = monotonic()
+
                 self.startPos = self.lastPos.copy()
-                self.lastPos.append((x, y))
+                self.prevPos = self.lastPos.copy()
+
                 self.startPos.append((x, y))
-                self.begin('touch', time, self.fingers)
+                self.prevPos.append((x, y))
+                self.lastPos.append((x, y))
 
             case 'MOTION':
-                self.startPos = self.lastPos.copy()
-                self.lastPos[finger] = (x, y)
-                self.update(time, xrel, yrel, ratio, angle)
-
-            # Need a timeout to allow ending without cancelling
-            case 'UP':
-                self.end(False)
-                self.fingers -= 1
                 if self.fingers > 0:
-                    self.begin('touch', time, self.fingers)
+                    self.prevPos = self.lastPos.copy()
+                    self.lastPos[finger] = (x, y)
+                    self.update(time, xrel, yrel, ratio, angle)
+
+            case 'UP':
+                self.fingers_ -= 1
+                self.finger_time = monotonic()
+
+        if self.fingers_ == 0:
+            self.end(False)
+            self.lastPos = []
+            self.prevPos = []
+            self.fingers = 0
+
+        if monotonic() - self.finger_time > options.touch_finger_tolerance:
+            if self.fingers != self.fingers_:
+                if self.fingers == 0:
+                    self.begin('touch', time, self.fingers_)
                 else:
-                    self.lastPos = []
-                    self.startPos = []
+                    self.end(True)
+                    self.begin('touch', time, self.fingers_)
+
+                self.fingers = self.fingers_
 
 # Set up everything before running the main loop
 options = OPTIONS()
