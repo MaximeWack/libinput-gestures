@@ -510,7 +510,7 @@ class HANDLER:
             elif not self.grab(device_type, fingers):
                 self.release(f'No gesture action with {fingers} fingers. Releasing handler')
 
-    def update(self, time, fingers, x, y, ratio, angle):
+    def update(self, time, x, y, ratio, angle):
         'Handle update event'
         if not self.state:
             return verbose('Not listening to update events for this gesture')
@@ -674,7 +674,7 @@ class HANDLER:
         'Listener for GESTURE lines'
         match event[1]:
             case 'BEGIN' : self.begin('gesture', time, int(fingers))
-            case 'UPDATE': self.update(time, fingers, x, y, ratio, angle)
+            case 'UPDATE': self.update(time, x, y, ratio, angle)
             case 'END'   : self.end(cancelled)
             case _       : debug(f'Device event {event} not recognized')
 
@@ -687,7 +687,7 @@ class HANDLER:
             if self.state and vert == '0.00' and horiz == '0.00':
                 self.end(False)
             else:
-                self.update(time, 2, horiz, vert, None, None)
+                self.update(time, horiz, vert, None, None)
 
         # BUTTON -> ignore? -> comment regex out so that it is not picked up ?
         # BUTTON : button pressed/released
@@ -765,7 +765,7 @@ class HANDLER:
             case 'MOTION':
                 self.startPos = self.lastPos.copy()
                 self.lastPos[finger] = (x, y)
-                self.update(time, self.fingers, xrel, yrel, ratio, angle)
+                self.update(time, xrel, yrel, ratio, angle)
 
             # Need a timeout to allow ending without cancelling
             case 'UP':
@@ -840,7 +840,7 @@ def main():
                 if 'busy' in handler.state:
                     anyholding = True
                     if monotonic() - handler.last_time > options.update_timer:
-                        handler.update(monotonic(), None, None, None, None, None)
+                        handler.update(monotonic(), None, None, None, None)
                         handler.last_time = monotonic()
 
             if not anyholding:
