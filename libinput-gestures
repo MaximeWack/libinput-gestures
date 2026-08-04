@@ -87,12 +87,13 @@ class OPTIONS:
 
     # Configurable options with their default values and validation functions
     available = dict(
-        swipe_min_threshold    = dict(default = 120    , valid = float, help = 'Minimum travel distance to register a swipe'),
-        ratio_min_threshold    = dict(default = .4   , valid = float, help = 'Minimum ratio to register a pinch'),
-        angle_min_threshold    = dict(default = 50   , valid = float, help = 'Minimum angle to register a rotation'),
-        hold_min_threshold     = dict(default = .3   , valid = float, help = 'Minimum time (in s) to register a hold'),
-        touch_finger_tolerance = dict(default = .1   , valid = float, help = 'Time before registering finger number change'),
-        update_timer           = dict(default = .1   , valid = float, help = 'Time interval at which update a continuous motion'))
+        swipe_min_threshold    = dict(default = 120, valid = float, help = 'Minimum travel distance to register a swipe'),
+        ratio_min_threshold    = dict(default =  .4, valid = float, help = 'Minimum ratio to register a pinch'),
+        angle_min_threshold    = dict(default =  50, valid = float, help = 'Minimum angle to register a rotation'),
+        hold_min_threshold     = dict(default =  .3, valid = float, help = 'Minimum time (in s) to register a hold'),
+        touch_finger_tolerance = dict(default =  .1, valid = float, help = 'Time before registering finger number change'),
+        touch_resolution       = dict(default =   5, valid = float, help = 'Touchscreen resolution in dots per mm. Converts gesture:touch distances'),
+        update_timer           = dict(default =  .1, valid = float, help = 'Time interval at which update a continuous motion'))
 
     def __init__(self):
         'Create attributes from the dict and set default values'
@@ -704,8 +705,8 @@ class HANDLER:
     def listener_touch(self, event, time, finger, x, y):
         'Listener for TOUCH lines'
         finger = int(finger)
-        x = x and float(x) * 5
-        y = y and float(y) * 5
+        x = x and float(x) * options.touch_resolution
+        y = y and float(y) * options.touch_resolution
 
         def center(points):
             center = [0, 0]
