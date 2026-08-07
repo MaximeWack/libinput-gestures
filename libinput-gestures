@@ -8,6 +8,7 @@ import subprocess
 import shlex
 import re
 import signal
+import libevdev
 
 from math import log, pi, sqrt, asin
 from fcntl import lockf, LOCK_EX, LOCK_NB
@@ -799,6 +800,84 @@ class HANDLER:
                     self.begin('touch', time, self.fingers_)
 
                 self.fingers = self.fingers_
+
+class VIRTUAL_DEVICE:
+    'Virtual device to send simulated events'
+
+    tool = ['BTN_TOOL_NONE',
+            libevdev.BTN_TOOL_FINGER,
+            libevdev.BTN_TOOL_DOUBLETAP,
+            libevdev.BTN_TOOL_TRIPLETAP,
+            libevdev.BTN_TOOL_QUADTAP,
+            libevdev.BTN_TOOL_QUINTTAP]
+
+    def __init__(self, copy_device):
+        'Create a virtual device with absinfo from touchscreen'
+
+        self.copy = libevdev.Device(open(copy_device, 'rb'))
+
+        self.dev = libevdev.Device()
+        self.dev.name = "libinput-actions virtual device"
+
+        for evbit in [libevdev.INPUT_PROP_POINTER,
+                      libevdev.INPUT_PROP_BUTTONPAD,
+                      libevdev.BTN_LEFT,
+                      libevdev.BTN_TOUCH,
+                      libevdev.BTN_TOOL_FINGER,
+                      libevdev.BTN_TOOL_QUINTTAP,
+                      libevdev.BTN_TOOL_DOUBLETAP,
+                      libevdev.BTN_TOOL_TRIPLETAP,
+                      libevdev.BTN_TOOL_QUADTAP]:
+            self.dev.enable(i)
+
+
+        for a in [libevdev.ABS_X,
+                  libevdev.ABS_Y,
+                  libevdev.ABS_MT_SLOT,
+                  libevdev.ABS_MT_POSITION_X,
+                  libevdev.ABS_MT_POSITION_Y,
+                  libevdev.ABS_MT_TRACKING_ID]:
+            self.dev.enable(a, copy.absinfo[a])
+
+        self.dev.enable(libevdev.ABS_MT_TOOL_TYPE, libevdev.InputAbsInfo(maximum = 2))
+
+        self.uinput = dev.create_uinput_device()
+
+        self.fingers = 0
+        self.fingers_ = 0
+        self.touchStarted = False
+
+    def translate_events(self):
+        for i in self.copy.events():
+            # Put the received event in a send event array
+            o = [i]
+
+            if i.code == libevdev.BTN_TOUCH:
+                self.touchStarted = i.value == 1
+
+            # Number of finger changes
+            if i.code == libevdev.ABS_MT_TRACKING_ID:
+                # Adding/removing a finger
+                if i.value == -1:
+                    self.fingers_ -= 1
+                else:
+                    self.fingers_ += 1
+
+            # Report finger change (except all lifted) in BTN_TOOL started
+            if self.touchStarted and self.fingers != self.fingers_ and self.fingers_ != 0:
+                o.append(libevdev.InputEvent(self.tool[self.fingers_], 1))
+
+                if self.fingers > 0:
+                    o.append(libevdev.InputEvent(self.tool[self.fingers], 0))
+
+                self.fingers = self.fingers_
+
+            if self.fingers != self.fingers_ and self.fingers_ == 0:
+                o.append(libevdev.InputEvent(self.tool[self.fingers], 0))
+
+                self.fingers = self.fingers_
+
+            uinput.send_events(o)
 
 # Set up everything before running the main loop
 options = OPTIONS()
