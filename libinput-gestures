@@ -88,13 +88,14 @@ class OPTIONS:
 
     # Configurable options with their default values and validation functions
     available = dict(
-        swipe_min_threshold    = dict(default = 120, valid = float, help = 'Minimum travel distance to register a swipe'),
-        ratio_min_threshold    = dict(default =  .4, valid = float, help = 'Minimum ratio to register a pinch'),
+        swipe_min_threshold    = dict(default =  12, valid = float, help = 'Minimum travel distance to register a swipe'),
+        ratio_min_threshold    = dict(default =  .5, valid = float, help = 'Minimum ratio to register a pinch'),
         angle_min_threshold    = dict(default =  50, valid = float, help = 'Minimum angle to register a rotation'),
-        hold_min_threshold     = dict(default =  .3, valid = float, help = 'Minimum time (in s) to register a hold'),
+        hold_min_threshold     = dict(default =  .5, valid = float, help = 'Minimum time (in s) to register a hold'),
         touch_finger_tolerance = dict(default =  .1, valid = float, help = 'Time before registering finger number change'),
-        touch_resolution       = dict(default =   5, valid = float, help = 'Touchscreen resolution in dots per mm. Converts gesture:touch distances'),
-        update_timer           = dict(default =  .1, valid = float, help = 'Time interval at which update a continuous motion'))
+        touch_multiplier       = dict(default =   3, valid = float, help = 'Multiplication factor for touchscreen gestures'),
+        update_timer           = dict(default =  .1, valid = float, help = 'Time interval at which update a continuous motion'),
+        devpath                = dict(default = '/dev/input', valid = str, help = 'System device path'))
 
     def __init__(self):
         'Create attributes from the dict and set default values'
@@ -434,6 +435,13 @@ class HANDLER:
         self.prevPos = []
         self.lastPos = []
 
+        evdevice = libevdev.Device(open(Path(options.devpath, device), 'rb'))
+
+        if evdevice.has(libevdev.ABS_X):
+            self.resolution = evdevice.absinfo[libevdev.ABS_X].resolution
+        else:
+            self.resolution = 1
+
     def add(self, name, capabilities, sizex, sizey):
         'Populate handler parameters and disable if none of its capabilities is used in configured actions'
         self.name = name
@@ -531,8 +539,6 @@ class HANDLER:
             self.data['angle'] += angle
 
         if x:
-            x = float(x)
-            y = float(y)
             self.data['x'] += x
             self.data['dx'] += x
             self.data['y'] += y
@@ -680,7 +686,7 @@ class HANDLER:
         'Listener for GESTURE lines'
         match event[1]:
             case 'BEGIN' : self.begin('gesture', time, int(fingers))
-            case 'UPDATE': self.update(time, x, y, ratio, angle)
+            case 'UPDATE': self.update(time, float(x2) / self.resolution, float(y2) / self.resolution, ratio, angle)
             case 'END'   : self.end(cancelled)
             case _       : debug(f'Device event {event} not recognized')
 
@@ -693,7 +699,7 @@ class HANDLER:
             if self.state and vert == '0.00' and horiz == '0.00':
                 self.end(False)
             else:
-                self.update(time, horiz, vert, None, None)
+                self.update(time, float(horiz) / self.resolution, float(vert) / self.resolution, None, None)
 
         # BUTTON -> ignore? -> comment regex out so that it is not picked up ?
         # BUTTON : button pressed/released
@@ -706,8 +712,8 @@ class HANDLER:
     def listener_touch(self, event, time, finger, x, y):
         'Listener for TOUCH lines'
         finger = int(finger)
-        x = x and float(x) * options.touch_resolution
-        y = y and float(y) * options.touch_resolution
+        x = x and float(x) / options.touch_multiplier
+        y = y and float(y) / options.touch_multiplier
 
         def center(points):
             center = [0, 0]
