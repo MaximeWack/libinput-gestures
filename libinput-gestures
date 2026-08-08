@@ -431,11 +431,14 @@ class HANDLER:
                               SWITCH  = self.listener_switch,
                               POINTER = self.listener_pointer)
         self.state = set()
+
+        # Touch state
         self.fingers = 0
         self.fingers_ = 0
         self.startPos = []
         self.prevPos = []
         self.lastPos = []
+        self.rotation = 1
 
         evdevice = libevdev.Device(open(Path(options.devpath, device), 'rb'))
 
@@ -787,6 +790,19 @@ class HANDLER:
                 if self.fingers > 0:
                     self.prevPos = self.lastPos.copy()
                     self.lastPos[finger] = (x, y)
+                    match self.rotation:
+                        case 8: #Xlib.ext.randr.Rotate_270:
+                            tmp = xrel
+                            xrel = yrel
+                            yrel = -tmp
+                        case 2: #Xlib.ext.randr.Rotate_90:
+                            tmp = yrel
+                            yrel = xrel
+                            xrel = -tmp
+                        case 4: #Xlib.ext.randr.Rotate_180:
+                            xrel = -xrel
+                            yrel = -yrel
+
                     self.update(time, xrel, yrel, ratio, angle)
 
             case 'UP':
@@ -801,11 +817,12 @@ class HANDLER:
 
         if monotonic() - self.finger_time > options.touch_finger_tolerance:
             if self.fingers != self.fingers_:
-                if self.fingers == 0:
-                    self.begin('touch', time, self.fingers_)
-                else:
+                if self.fingers != 0:
                     self.end(True)
-                    self.begin('touch', time, self.fingers_)
+
+                if Xlib.display:
+                    self.rotation = Xlib.display.Display().screen().root.xrandr_get_screen_info().rotation
+                self.begin('touch', time, self.fingers_)
 
                 self.fingers = self.fingers_
 
