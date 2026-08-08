@@ -292,6 +292,8 @@ class CONF_READER:
                 # wclass sections
                 if re.match(r'^\[.*\]$', line.strip()):
                     self.wclass_prefix = line.strip()[1:-1]
+                    if self.wclass_prefix == '':
+                        self.wclass_prefix = None
                     continue
 
                 errmsg = self.get_line(line)
