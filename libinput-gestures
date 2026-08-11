@@ -23,6 +23,7 @@ except:
     print("No Xlib library found. Window class specific actions won't be available")
 
 PROGNAME = Path(sys.argv[0]).stem
+DEVICEPREFIX = PROGNAME + " virtual"
 
 def lock():
     'Create a lockfile'
@@ -454,7 +455,10 @@ class HANDLER:
         self.capabilities = {v for k, v in self.cap_dict.items() if k in capabilities}
         self.size = (sizex, sizey)
 
-        self.state = {'disabled'} if self.capabilities.isdisjoint(actions.actions) else set()
+        self.state = set()
+        if self.capabilities.isdisjoint(actions.actions) or name.startswith(DEVICEPREFIX):
+            self.state.add('disabled')
+
         verbose(f'{'Ignoring' if 'disabled' in self.state else 'Adding   '} device {name:50} ({self.device}) {self.capabilities}')
 
     def remove(self):
