@@ -194,6 +194,7 @@ class ACTIONS:
         'Add all other actions'
         fingers = int(fingers)
         modifier = modifier or 'end'
+        command = command.strip()
 
         self.parsed_actions.append(f'{restrict or '':7} {hold or ''}{action:6} {fingers} {motion or '':5} {modifier:10} {command:60} {wclass or '':>}')
 
