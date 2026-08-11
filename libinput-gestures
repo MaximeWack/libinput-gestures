@@ -514,7 +514,13 @@ class HANDLER:
         verbose(f'\033[1m\033[92m  {command}\033[0m')
 
         if not args.debug:
-            subprocess.Popen(shlex.split(command))
+            if command[0] == '_':
+                command, *keys = command[1:].split()
+                match command:
+                    case 'keys':
+                        vkey.send_keys(keys)
+            else:
+                subprocess.Popen(shlex.split(command))
 
     def switch(self, switch, state):
         'Handle a switch action'
@@ -1031,6 +1037,9 @@ class VIRTUAL_KEY:
 # Set up everything before running the main loop
 options = OPTIONS()
 actions = ACTIONS()
+
+# Virtual devices
+vkey = VIRTUAL_KEY()
 
 # Set up command line arguments
 args = get_options()
