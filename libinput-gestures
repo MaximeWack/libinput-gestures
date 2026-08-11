@@ -831,8 +831,8 @@ class HANDLER:
 
                 self.fingers = self.fingers_
 
-class VIRTUAL_DEVICE:
-    'Virtual device to send simulated events'
+class VIRTUAL_TRANSLATE:
+    'Virtual device to translate touch events to gesture events'
 
     tool = ['BTN_TOOL_NONE',
             libevdev.BTN_TOOL_FINGER,
@@ -846,8 +846,8 @@ class VIRTUAL_DEVICE:
 
         self.copy = libevdev.Device(open(copy_device, 'rb'))
 
-        self.dev = libevdev.Device()
-        self.dev.name = "libinput-actions virtual device"
+        dev = libevdev.Device()
+        dev.name = DEVICENAME + " pad"
 
         for evbit in [libevdev.INPUT_PROP_POINTER,
                       libevdev.INPUT_PROP_BUTTONPAD,
@@ -858,7 +858,7 @@ class VIRTUAL_DEVICE:
                       libevdev.BTN_TOOL_DOUBLETAP,
                       libevdev.BTN_TOOL_TRIPLETAP,
                       libevdev.BTN_TOOL_QUADTAP]:
-            self.dev.enable(i)
+            dev.enable(i)
 
 
         for a in [libevdev.ABS_X,
@@ -867,11 +867,11 @@ class VIRTUAL_DEVICE:
                   libevdev.ABS_MT_POSITION_X,
                   libevdev.ABS_MT_POSITION_Y,
                   libevdev.ABS_MT_TRACKING_ID]:
-            self.dev.enable(a, copy.absinfo[a])
+            dev.enable(a, copy.absinfo[a])
 
-        self.dev.enable(libevdev.ABS_MT_TOOL_TYPE, libevdev.InputAbsInfo(maximum = 2))
+        dev.enable(libevdev.ABS_MT_TOOL_TYPE, libevdev.InputAbsInfo(maximum = 2))
 
-        self.uinput = dev.create_uinput_device()
+        self.dev = dev.create_uinput_device()
 
         self.fingers = 0
         self.fingers_ = 0
@@ -907,7 +907,7 @@ class VIRTUAL_DEVICE:
 
                 self.fingers = self.fingers_
 
-            uinput.send_events(o)
+            self.dev.send_events(o)
 
 # Set up everything before running the main loop
 options = OPTIONS()
