@@ -909,6 +909,125 @@ class VIRTUAL_TRANSLATE:
 
             self.dev.send_events(o)
 
+class VIRTUAL_PAD:
+    'Virtual device to send simulated gesture events'
+
+    def __init__(self):
+        'Create a virtual gesture device'
+
+        dev = libevdev.Device()
+        dev.name = DEVICEPREFIX + " gesture"
+
+        INPUT = [libevdev.INPUT_PROP_POINTER,
+                 libevdev.INPUT_PROP_BUTTONPAD]
+
+        for i in INPUT:
+            dev.enable(i)
+
+        BTN = [libevdev.BTN_LEFT,
+               libevdev.BTN_TOUCH,
+               libevdev.BTN_TOOL_FINGER,
+               libevdev.BTN_TOOL_QUINTTAP,
+               libevdev.BTN_TOOL_DOUBLETAP,
+               libevdev.BTN_TOOL_TRIPLETAP,
+               libevdev.BTN_TOOL_QUADTAP]
+
+        for b in BTN:
+            dev.enable(b)
+
+        dev.enable(libevdev.ABS_MT_TOOL_TYPE, libevdev.InputAbsInfo(maximum = 2))
+
+        dev.enable(libevdev.ABS_X, libevdev.InputAbsInfo(maximum = 1000, resolution = 10))
+        dev.enable(libevdev.ABS_Y, libevdev.InputAbsInfo(maximum = 1000, resolution = 10))
+        dev.enable(libevdev.ABS_MT_SLOT, libevdev.InputAbsInfo(maximum = 4))
+        dev.enable(libevdev.ABS_MT_POSITION_X, libevdev.InputAbsInfo(maximum = 1000, resolution = 10))
+        dev.enable(libevdev.ABS_MT_POSITION_Y, libevdev.InputAbsInfo(maximum = 1000, resolution = 10))
+        dev.enable(libevdev.ABS_MT_TRACKING_ID, libevdev.InputAbsInfo(maximum = 65535))
+
+        self.dev = dev.create_uinput_device()
+
+    def send_scroll(self, direction, amount):
+        'Send a fake scroll event'
+
+        y = 100
+        self.dev.send_events([libevdev.InputEvent(libevdev.ABS_MT_SLOT, 0),
+                              libevdev.InputEvent(libevdev.ABS_MT_TRACKING_ID, 1),
+                              libevdev.InputEvent(libevdev.ABS_MT_POSITION_X, 100),
+                              libevdev.InputEvent(libevdev.ABS_MT_POSITION_Y, y),
+                              libevdev.InputEvent(libevdev.ABS_X, 100),
+                              libevdev.InputEvent(libevdev.ABS_Y, y),
+                              libevdev.InputEvent(libevdev.ABS_MT_SLOT, 1),
+                              libevdev.InputEvent(libevdev.ABS_MT_TRACKING_ID, 2),
+                              libevdev.InputEvent(libevdev.ABS_MT_POSITION_X, 200),
+                              libevdev.InputEvent(libevdev.ABS_MT_POSITION_Y, y),
+                              libevdev.InputEvent(libevdev.BTN_TOUCH, 1),
+                              libevdev.InputEvent(libevdev.BTN_TOOL_DOUBLETAP, 1),
+                              libevdev.InputEvent(libevdev.SYN_REPORT, 0)])
+
+        time.sleep(.04) # HOLD BEGIN (needs 40ms)
+
+        y += 14 # minimum distance to end HOLD
+        self.dev.send_events([libevdev.InputEvent(libevdev.ABS_MT_SLOT, 0),
+                              libevdev.InputEvent(libevdev.ABS_MT_POSITION_X, 100),
+                              libevdev.InputEvent(libevdev.ABS_MT_POSITION_Y, y),
+                              libevdev.InputEvent(libevdev.ABS_X, 100),
+                              libevdev.InputEvent(libevdev.ABS_Y, y),
+                              libevdev.InputEvent(libevdev.ABS_MT_SLOT, 1),
+                              libevdev.InputEvent(libevdev.ABS_MT_POSITION_X, 200),
+                              libevdev.InputEvent(libevdev.ABS_MT_POSITION_Y, y),
+                              libevdev.InputEvent(libevdev.SYN_REPORT, 0)])
+
+        time.sleep(.003) # HOLD END (needs minimum distance)
+
+        for i in range(20):
+            y += 1
+            self.dev.send_events([libevdev.InputEvent(libevdev.ABS_MT_SLOT, 0),
+                                  libevdev.InputEvent(libevdev.ABS_MT_POSITION_X, 100),
+                                  libevdev.InputEvent(libevdev.ABS_MT_POSITION_Y, y),
+                                  libevdev.InputEvent(libevdev.ABS_X, 100),
+                                  libevdev.InputEvent(libevdev.ABS_Y, y),
+                                  libevdev.InputEvent(libevdev.ABS_MT_SLOT, 1),
+                                  libevdev.InputEvent(libevdev.ABS_MT_POSITION_X, 200),
+                                  libevdev.InputEvent(libevdev.ABS_MT_POSITION_Y, y),
+                                  libevdev.InputEvent(libevdev.SYN_REPORT, 0)])
+
+            time.sleep(.003)
+
+        self.dev.send_events([libevdev.InputEvent(libevdev.ABS_MT_SLOT, 0),
+                              libevdev.InputEvent(libevdev.ABS_MT_TRACKING_ID, -1),
+                              libevdev.InputEvent(libevdev.ABS_MT_SLOT, 1),
+                              libevdev.InputEvent(libevdev.ABS_MT_TRACKING_ID, -1),
+                              libevdev.InputEvent(libevdev.BTN_TOUCH, 0),
+                              libevdev.InputEvent(libevdev.BTN_TOOL_DOUBLETAP, 0),
+                              libevdev.InputEvent(libevdev.SYN_REPORT, 0)])
+
+class VIRTUAL_KEY:
+    'Virtual device to send simulated key events'
+
+    def __init__(self):
+        'Create a virtual keyboard device'
+
+        dev = libevdev.Device()
+        dev.name = DEVICEPREFIX + " key"
+
+        for k in libevdev.EV_KEY.codes:
+            dev.enable(k)
+
+        self.dev = dev.create_uinput_device()
+
+    def send_keys(self, keys):
+        'Send the combination of given keys'
+
+        ev_keys = [getattr(libevdev, 'KEY_' + k.upper()) for k in keys]
+        press = [libevdev.InputEvent(ev, 1) for ev in ev_keys]
+        release = [libevdev.InputEvent(ev, 0) for ev in ev_keys]
+
+        press.append(libevdev.InputEvent(libevdev.SYN_REPORT, 0))
+        release.append(libevdev.InputEvent(libevdev.SYN_REPORT, 0))
+
+        self.dev.send_events(press)
+        self.dev.send_events(release)
+
 # Set up everything before running the main loop
 options = OPTIONS()
 actions = ACTIONS()
