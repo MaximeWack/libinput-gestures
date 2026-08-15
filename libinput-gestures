@@ -412,7 +412,7 @@ class HANDLER:
         TOUCH = re.compile(r"""(?P<finger> \d)?                                   # Finger
                             \s* \( (?: \d) \)?
                             \s* ((?: \d+\.\d+) /\s* (?: \d+\.\d+))?               # Absolute position 0-100% of width/height
-                            \s* (\( (?P<x> \d+\.\d+) /\s* (?P<y> \d+\.\d+) mm\))? # Absolute position in mm""", flags = re.VERBOSE),
+                            \s* (\( \s* (?P<x> \d+\.\d+) /\s* (?P<y> \d+\.\d+) mm\))? # Absolute position in mm""", flags = re.VERBOSE),
 
         GESTURE = re.compile(r"""(?P<fingers> \d)                                                  # Fingers
                                 \s* (?P<cancelled>cancelled)?
