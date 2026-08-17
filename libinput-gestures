@@ -455,6 +455,10 @@ class HANDLER:
         self.capabilities = {v for k, v in self.cap_dict.items() if k in capabilities}
         self.size = (sizex, sizey)
 
+        # Create a gesture translation device for touchscreens
+        if 'touch' in self.capabilities:
+            self.translate_device = VIRTUAL_TRANSLATE(self.evdevice)
+
         self.state = set()
         if self.capabilities.isdisjoint(actions.actions) or name.startswith(DEVICEPREFIX):
             self.state.add('disabled')
@@ -525,7 +529,9 @@ class HANDLER:
                         vpad.end_gesture(self.evdevice)
                     case 'scroll':
                         vpad.scroll(self.data['dx'], self.data['dy'])
-                        # vpad.scroll(*keys)
+                    case 'translate':
+                        if self.translate_device:
+                            self.translate_device.gesture()
             else:
                 subprocess.Popen(shlex.split(command))
 
@@ -857,10 +863,10 @@ class VIRTUAL_TRANSLATE:
     def __init__(self, copy_device):
         'Create a virtual device with absinfo from touchscreen'
 
-        self.copy = libevdev.Device(open(copy_device, 'rb'))
+        self.copy_device = copy_device
 
         dev = libevdev.Device()
-        dev.name = DEVICENAME + " pad"
+        dev.name = DEVICEPREFIX + " translate"
 
         for evbit in [libevdev.INPUT_PROP_POINTER,
                       libevdev.INPUT_PROP_BUTTONPAD,
@@ -871,8 +877,7 @@ class VIRTUAL_TRANSLATE:
                       libevdev.BTN_TOOL_DOUBLETAP,
                       libevdev.BTN_TOOL_TRIPLETAP,
                       libevdev.BTN_TOOL_QUADTAP]:
-            dev.enable(i)
-
+            dev.enable(evbit)
 
         for a in [libevdev.ABS_X,
                   libevdev.ABS_Y,
@@ -880,7 +885,7 @@ class VIRTUAL_TRANSLATE:
                   libevdev.ABS_MT_POSITION_X,
                   libevdev.ABS_MT_POSITION_Y,
                   libevdev.ABS_MT_TRACKING_ID]:
-            dev.enable(a, copy.absinfo[a])
+            dev.enable(a, copy_device.absinfo[a])
 
         dev.enable(libevdev.ABS_MT_TOOL_TYPE, libevdev.InputAbsInfo(maximum = 2))
 
