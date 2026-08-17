@@ -14,7 +14,7 @@ from math import log, pi, sqrt, asin, floor, ceil
 from fcntl import lockf, LOCK_EX, LOCK_NB
 from platform import platform, python_version
 from argparse import ArgumentParser
-from time import monotonic
+from time import monotonic, sleep
 from pathlib import Path
 
 try:
@@ -519,6 +519,13 @@ class HANDLER:
                 match command:
                     case 'keys':
                         vkey.send_keys(keys)
+                    case 'begin_gesture':
+                        vpad.begin_gesture(self.evdevice)
+                    case 'end_gesture':
+                        vpad.end_gesture(self.evdevice)
+                    case 'scroll':
+                        vpad.scroll(self.data['dx'], self.data['dy'])
+                        # vpad.scroll(*keys)
             else:
                 subprocess.Popen(shlex.split(command))
 
@@ -952,52 +959,67 @@ class VIRTUAL_PAD:
 
         self.dev = dev.create_uinput_device()
 
-    def send_scroll(self, direction, amount):
-        'Send a fake scroll event'
+    def begin_gesture(self, evdevice):
+        'Set up a gesture by crossing the HOLD limit and centering the fingers'
 
-        y = 100
+        # evdevice.grab()
+
+        self.x = 490
+        self.y = 490
+
         self.dev.send_events([libevdev.InputEvent(libevdev.ABS_MT_SLOT, 0),
                               libevdev.InputEvent(libevdev.ABS_MT_TRACKING_ID, 1),
-                              libevdev.InputEvent(libevdev.ABS_MT_POSITION_X, 100),
-                              libevdev.InputEvent(libevdev.ABS_MT_POSITION_Y, y),
-                              libevdev.InputEvent(libevdev.ABS_X, 100),
-                              libevdev.InputEvent(libevdev.ABS_Y, y),
+                              libevdev.InputEvent(libevdev.ABS_MT_POSITION_X, self.x),
+                              libevdev.InputEvent(libevdev.ABS_MT_POSITION_Y, self.y - 50),
+                              libevdev.InputEvent(libevdev.ABS_X, self.x),
+                              libevdev.InputEvent(libevdev.ABS_Y, self.y - 50),
                               libevdev.InputEvent(libevdev.ABS_MT_SLOT, 1),
                               libevdev.InputEvent(libevdev.ABS_MT_TRACKING_ID, 2),
-                              libevdev.InputEvent(libevdev.ABS_MT_POSITION_X, 200),
-                              libevdev.InputEvent(libevdev.ABS_MT_POSITION_Y, y),
+                              libevdev.InputEvent(libevdev.ABS_MT_POSITION_X, self.x),
+                              libevdev.InputEvent(libevdev.ABS_MT_POSITION_Y, self.y + 50),
                               libevdev.InputEvent(libevdev.BTN_TOUCH, 1),
                               libevdev.InputEvent(libevdev.BTN_TOOL_DOUBLETAP, 1),
                               libevdev.InputEvent(libevdev.SYN_REPORT, 0)])
 
-        time.sleep(.04) # HOLD BEGIN (needs 40ms)
+        sleep(.04) # HOLD BEGIN (needs 40ms)
 
-        y += 14 # minimum distance to end HOLD
+        # minimum distance to end HOLD is 14 (so sqrt(10² + 10²))
+        self.x += 10
+        self.y += 10
+        # we end up at the center of the virtual device ready to start a gesture
+
         self.dev.send_events([libevdev.InputEvent(libevdev.ABS_MT_SLOT, 0),
-                              libevdev.InputEvent(libevdev.ABS_MT_POSITION_X, 100),
-                              libevdev.InputEvent(libevdev.ABS_MT_POSITION_Y, y),
-                              libevdev.InputEvent(libevdev.ABS_X, 100),
-                              libevdev.InputEvent(libevdev.ABS_Y, y),
+                              libevdev.InputEvent(libevdev.ABS_MT_POSITION_X, self.x),
+                              libevdev.InputEvent(libevdev.ABS_MT_POSITION_Y, self.y - 50),
+                              libevdev.InputEvent(libevdev.ABS_X, self.x),
+                              libevdev.InputEvent(libevdev.ABS_Y, self.y - 50),
                               libevdev.InputEvent(libevdev.ABS_MT_SLOT, 1),
-                              libevdev.InputEvent(libevdev.ABS_MT_POSITION_X, 200),
-                              libevdev.InputEvent(libevdev.ABS_MT_POSITION_Y, y),
+                              libevdev.InputEvent(libevdev.ABS_MT_POSITION_X, self.x),
+                              libevdev.InputEvent(libevdev.ABS_MT_POSITION_Y, self.y + 50),
                               libevdev.InputEvent(libevdev.SYN_REPORT, 0)])
 
-        time.sleep(.003) # HOLD END (needs minimum distance)
+        sleep(.003) # HOLD END (needs minimum distance)
 
-        for i in range(20):
-            y += 1
-            self.dev.send_events([libevdev.InputEvent(libevdev.ABS_MT_SLOT, 0),
-                                  libevdev.InputEvent(libevdev.ABS_MT_POSITION_X, 100),
-                                  libevdev.InputEvent(libevdev.ABS_MT_POSITION_Y, y),
-                                  libevdev.InputEvent(libevdev.ABS_X, 100),
-                                  libevdev.InputEvent(libevdev.ABS_Y, y),
-                                  libevdev.InputEvent(libevdev.ABS_MT_SLOT, 1),
-                                  libevdev.InputEvent(libevdev.ABS_MT_POSITION_X, 200),
-                                  libevdev.InputEvent(libevdev.ABS_MT_POSITION_Y, y),
-                                  libevdev.InputEvent(libevdev.SYN_REPORT, 0)])
+    def scroll(self, x, y):
+        'Send a scroll event'
 
-            time.sleep(.003)
+        self.x += int(float(x) * 10)# / options.touch_multiplier)
+        self.y += int(float(y) * 10)# / options.touch_multiplier)
+
+        self.dev.send_events([libevdev.InputEvent(libevdev.ABS_MT_SLOT, 0),
+                                libevdev.InputEvent(libevdev.ABS_MT_POSITION_X, self.x),
+                                libevdev.InputEvent(libevdev.ABS_MT_POSITION_Y, self.y - 50),
+                                libevdev.InputEvent(libevdev.ABS_X, self.x),
+                                libevdev.InputEvent(libevdev.ABS_Y, self.y - 50),
+                                libevdev.InputEvent(libevdev.ABS_MT_SLOT, 1),
+                                libevdev.InputEvent(libevdev.ABS_MT_POSITION_X, self.x),
+                                libevdev.InputEvent(libevdev.ABS_MT_POSITION_Y, self.y + 50),
+                                libevdev.InputEvent(libevdev.SYN_REPORT, 0)])
+
+    def end_gesture(self, evdevice):
+        'End a gesture by lifting the fingers'
+
+        # evdevice.ungrab()
 
         self.dev.send_events([libevdev.InputEvent(libevdev.ABS_MT_SLOT, 0),
                               libevdev.InputEvent(libevdev.ABS_MT_TRACKING_ID, -1),
@@ -1040,6 +1062,7 @@ actions = ACTIONS()
 
 # Virtual devices
 vkey = VIRTUAL_KEY()
+vpad = VIRTUAL_PAD()
 
 # Set up command line arguments
 args = get_options()
