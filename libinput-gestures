@@ -442,10 +442,10 @@ class HANDLER:
         self.lastPos = []
         self.rotation = 1
 
-        evdevice = libevdev.Device(open(Path(options.devpath, device), 'rb'))
+        self.evdevice = libevdev.Device(open(Path(options.devpath, device), 'rb'))
 
-        if evdevice.has(libevdev.ABS_X):
-            self.resolution = evdevice.absinfo[libevdev.ABS_X].resolution
+        if self.evdevice.has(libevdev.ABS_X):
+            self.resolution = self.evdevice.absinfo[libevdev.ABS_X].resolution
         else:
             self.resolution = 1
 
