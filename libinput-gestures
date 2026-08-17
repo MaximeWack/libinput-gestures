@@ -959,10 +959,8 @@ class VIRTUAL_PAD:
 
         self.dev = dev.create_uinput_device()
 
-    def begin_gesture(self, evdevice):
+    def begin_gesture(self):
         'Set up a gesture by crossing the HOLD limit and centering the fingers'
-
-        # evdevice.grab()
 
         self.x = 490
         self.y = 490
@@ -1012,8 +1010,6 @@ class VIRTUAL_PAD:
 
     def end_gesture(self, evdevice):
         'End a gesture by lifting the fingers'
-
-        # evdevice.ungrab()
 
         self.dev.send_events([libevdev.InputEvent(libevdev.ABS_MT_SLOT, 0),
                               libevdev.InputEvent(libevdev.ABS_MT_TRACKING_ID, -1),
