@@ -10,7 +10,7 @@ import re
 import signal
 import libevdev
 
-from math import log, pi, sqrt, asin
+from math import log, pi, sqrt, asin, floor, ceil
 from fcntl import lockf, LOCK_EX, LOCK_NB
 from platform import platform, python_version
 from argparse import ArgumentParser
@@ -506,7 +506,7 @@ class HANDLER:
 
     def run(self, command):
         'Run the given command with replacement of {}'
-        data = {k: int(v) for k, v in self.data.items()}
+        data = {k: floor(v) if v < 0 else ceil(v) for k, v in self.data.items()}
         exprs = re.findall(r'\{[^\{\}]+\}', command)
         for expr in exprs:
             command = command.replace(expr, str(eval(expr[1:-1], {}, data)))
