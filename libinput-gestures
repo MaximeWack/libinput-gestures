@@ -511,7 +511,7 @@ class HANDLER:
         for expr in exprs:
             command = command.replace(expr, str(eval(expr[1:-1], {}, data)))
 
-        verbose(f'\033[1m\033[92m  {command}\033[0m')
+        verbose(f'\033[1m\033[92m  {command}\033[0m {data}')
 
         if not args.debug:
             if command[0] == '_':
