@@ -457,7 +457,7 @@ class HANDLER:
 
         # Create a gesture translation device for touchscreens
         if 'touch' in self.capabilities:
-            self.translate_device = VIRTUAL_TRANSLATE(self.evdevice)
+            self.translate_device = VIRTUAL_TRANSLATE(self)
 
         self.state = set()
         if self.capabilities.isdisjoint(actions.actions) or name.startswith(DEVICEPREFIX):
@@ -863,10 +863,10 @@ class VIRTUAL_TRANSLATE:
             libevdev.BTN_TOOL_QUADTAP,
             libevdev.BTN_TOOL_QUINTTAP]
 
-    def __init__(self, copy_device):
+    def __init__(self, parent_handler):
         'Create a virtual device with absinfo from touchscreen'
 
-        self.copy_device = copy_device
+        self.copy_device = parent_handler.evdevice
 
         dev = libevdev.Device()
         dev.name = DEVICEPREFIX + " translate"
@@ -888,7 +888,7 @@ class VIRTUAL_TRANSLATE:
                   libevdev.ABS_MT_POSITION_X,
                   libevdev.ABS_MT_POSITION_Y,
                   libevdev.ABS_MT_TRACKING_ID]:
-            dev.enable(a, copy_device.absinfo[a])
+            dev.enable(a, self.copy_device.absinfo[a])
 
         dev.enable(libevdev.ABS_MT_TOOL_TYPE, libevdev.InputAbsInfo(maximum = 2))
 
