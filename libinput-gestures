@@ -813,6 +813,10 @@ class HANDLER:
                 self.prevPos.append((x, y))
                 self.lastPos.append((x, y))
 
+            case 'UP':
+                self.fingers_ -= 1
+                self.finger_time = monotonic()
+
             case 'MOTION':
                 if self.fingers > 0:
                     self.prevPos = self.lastPos.copy()
@@ -831,10 +835,6 @@ class HANDLER:
                             yrel = -yrel
 
                     self.update(time, xrel, yrel, ratio, angle)
-
-            case 'UP':
-                self.fingers_ -= 1
-                self.finger_time = monotonic()
 
         if self.fingers_ == 0:
             self.end(False)
