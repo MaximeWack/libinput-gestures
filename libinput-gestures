@@ -437,12 +437,14 @@ class HANDLER:
         self.evdevice = libevdev.Device(open(Path(options.devpath, device), 'rb'))
 
         # Touch state
-        self.fingers = 0
-        self.fingers_ = 0
-        self.startPos = []
-        self.prevPos = []
-        self.lastPos = []
-        self.rotation = 1
+        self.num_slots = self.evdevice.num_slots
+        if self.num_slots:
+            self.fingers = 0
+            self.fingers_ = 0
+            self.startPos = [(0,0)] * self.num_slots
+            self.prevPos = [(0,0)] * self.num_slots
+            self.lastPos = [(0,0)] * self.num_slots
+            self.rotation = 1
 
         if self.evdevice.has(libevdev.ABS_X):
             self.resolution = self.evdevice.absinfo[libevdev.ABS_X].resolution
@@ -749,39 +751,48 @@ class HANDLER:
 
         def center(points):
             center = [0, 0]
+            n = 0
 
             for point in points:
-                center[0] += point[0]
-                center[1] += point[1]
+                if point != (0, 0):
+                    center[0] += point[0]
+                    center[1] += point[1]
+                    n += 1
 
-            return (center[0] / len(points), center[1] / len(points))
+            return (center[0] / n, center[1] / n)
 
         def diff(point1, point2):
             return((point2[0] - point1[0], point2[1] - point1[1]))
 
         def mean_dist(points, center):
             dist = 0
+            n = 0
 
             for point in points:
-                vec = diff(center, point)
-                dist += sqrt(vec[0]**2 + vec[1]**2)
+                if point != (0,0):
+                    vec = diff(center, point)
+                    dist += sqrt(vec[0]**2 + vec[1]**2)
+                    n += 1
 
-            return dist / len(points)
+            return dist / n
 
         def norm_cross_prod(x1, y1, x2, y2):
-            return (x1*y2 - x2*y1) / (0.0000001 + sqrt(x1**2 + y1**2) * sqrt(x2**2 + y2**2))
+            return (x1 * y2 - x2 * y1) / (0.0000001 + sqrt(x1 ** 2 + y1 ** 2) * sqrt(x2 ** 2 + y2 ** 2))
 
         def calc_angle(startPos, lastPos, startCenter, lastCenter):
             angle = 0
             xc1, yc1 = startCenter
             xc2, yc2 = lastCenter
+            n = 0
 
-            for i in range(0, len(startPos)):
-                x1, y1 = startPos[i]
-                x2, y2 = lastPos[i]
-                angle += asin(norm_cross_prod(x1 - xc1, y1 - yc1, x2 - xc2, y2 - yc2))
+            for i in range(self.num_slots):
+                if startPos[i] != (0, 0):
+                    x1, y1 = startPos[i]
+                    x2, y2 = lastPos[i]
+                    angle += asin(norm_cross_prod(x1 - xc1, y1 - yc1, x2 - xc2, y2 - yc2))
+                    n += 1
 
-            return angle / len(startPos)
+            return angle / n
 
         if self.fingers_ > 0:
             startCenter = center(self.startPos)
@@ -806,20 +817,21 @@ class HANDLER:
                 self.fingers_ += 1
                 self.finger_time = monotonic()
 
-                self.startPos = self.lastPos.copy()
-                self.prevPos = self.lastPos.copy()
-
-                self.startPos.append((x, y))
-                self.prevPos.append((x, y))
-                self.lastPos.append((x, y))
+                self.startPos[finger] = (x, y)
+                self.prevPos[finger] = (x, y)
+                self.lastPos[finger] = (x, y)
 
             case 'UP':
                 self.fingers_ -= 1
                 self.finger_time = monotonic()
 
+                self.startPos[finger] = (0, 0)
+                self.prevPos[finger] = (0, 0)
+                self.lastPos[finger] = (0, 0)
+
             case 'MOTION':
                 if self.fingers > 0:
-                    self.prevPos = self.lastPos.copy()
+                    self.prevPos[finger] = self.lastPos[finger]
                     self.lastPos[finger] = (x, y)
                     match self.rotation:
                         case 8: #Xlib.ext.randr.Rotate_270:
@@ -838,8 +850,6 @@ class HANDLER:
 
         if self.fingers_ == 0:
             self.end(False)
-            self.lastPos = []
-            self.prevPos = []
             self.fingers = 0
 
         if monotonic() - self.finger_time > options.touch_finger_tolerance:
