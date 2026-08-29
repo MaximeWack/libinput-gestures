@@ -11,7 +11,7 @@ import signal
 import libevdev
 
 from math import log, pi, sqrt, asin, floor, ceil
-from fcntl import lockf, LOCK_EX, LOCK_NB
+from fcntl import fcntl, lockf, LOCK_EX, LOCK_NB, F_SETFL
 from platform import platform, python_version
 from argparse import ArgumentParser
 from time import monotonic, sleep
@@ -434,6 +434,8 @@ class HANDLER:
                               POINTER = self.listener_pointer)
         self.state = set()
 
+        self.evdevice = libevdev.Device(open(Path(options.devpath, device), 'rb'))
+
         # Touch state
         self.fingers = 0
         self.fingers_ = 0
@@ -441,8 +443,6 @@ class HANDLER:
         self.prevPos = []
         self.lastPos = []
         self.rotation = 1
-
-        self.evdevice = libevdev.Device(open(Path(options.devpath, device), 'rb'))
 
         if self.evdevice.has(libevdev.ABS_X):
             self.resolution = self.evdevice.absinfo[libevdev.ABS_X].resolution
@@ -866,7 +866,9 @@ class VIRTUAL_TRANSLATE:
     def __init__(self, parent_handler):
         'Create a virtual device with absinfo from touchscreen'
 
+        self.parent_handler = parent_handler
         self.copy_device = parent_handler.evdevice
+        self.num_slots = self.copy_device.num_slots
 
         dev = libevdev.Device()
         dev.name = DEVICEPREFIX + " translate"
@@ -894,41 +896,92 @@ class VIRTUAL_TRANSLATE:
 
         self.dev = dev.create_uinput_device()
 
-        self.fingers = 0
-        self.fingers_ = 0
-        self.touchStarted = False
+    def flush(self):
+        'Flush the evdev queue and get the fingers tracking ids at the same time'
+        tracking_ids = [-1] * self.num_slots
 
-    def translate_events(self):
-        for i in self.copy.events():
-            # Put the received event in a send event array
-            o = [i]
+        # Set descriptor as non-blocking to flush queued events
+        fcntl(self.copy_device.fd, F_SETFL, os.O_NONBLOCK)
 
-            if i.code == libevdev.BTN_TOUCH:
-                self.touchStarted = i.value == 1
+        try:
+            for e in self.copy_device.events():
+                if e.type != libevdev.SYN_DROPPED:
+                    for i in range(self.num_slots):
+                        tracking_ids[i] = self.copy_device.slots[i][libevdev.ABS_MT_TRACKING_ID]
 
-            # Number of finger changes
-            if i.code == libevdev.ABS_MT_TRACKING_ID:
-                # Adding/removing a finger
-                if i.value == -1:
-                    self.fingers_ -= 1
-                else:
-                    self.fingers_ += 1
+        # If dropped event, sync the device (and discard the queued synced events)
+        except libevdev.device.EventsDroppedException:
+            for e in self.copy_device.sync():
+                for i in range(self.num_slots):
+                    tracking_ids[i] = self.copy_device.slots[i][libevdev.ABS_MT_TRACKING_ID]
 
-            # Report finger change (except all lifted) in BTN_TOOL started
-            if self.touchStarted and self.fingers != self.fingers_ and self.fingers_ != 0:
-                o.append(libevdev.InputEvent(self.tool[self.fingers_], 1))
+        fcntl(self.copy_device.fd, F_SETFL, os.O_ASYNC)
 
-                if self.fingers > 0:
-                    o.append(libevdev.InputEvent(self.tool[self.fingers], 0))
+        return(tracking_ids)
 
-                self.fingers = self.fingers_
+    def translate_events(self, tracking_ids, tracked_fingers):
+        'Just translate the position events and discard the rest. Break out if finger change'
 
-            if self.fingers != self.fingers_ and self.fingers_ == 0:
-                o.append(libevdev.InputEvent(self.tool[self.fingers], 0))
+        self.copy_device.grab()
 
-                self.fingers = self.fingers_
+        self.start_gesture(tracking_ids, tracked_fingers)
 
-            self.dev.send_events(o)
+        for e in self.copy_device.events():
+            if e.code == libevdev.ABS_MT_TRACKING_ID:
+                break
+            else:
+                self.dev.send_events([e])
+
+        self.end_gesture(tracking_ids, tracked_fingers)
+
+        self.copy_device.ungrab()
+
+    def start_gesture(self, tracking_ids, tracked_fingers):
+        'Initiate the gesture with the specified number of fingers'
+        o = []
+
+        for i in range(self.num_slots):
+            if tracking_ids[i] != -1:
+                o.extend([libevdev.InputEvent(libevdev.ABS_MT_SLOT, i),
+                          libevdev.InputEvent(libevdev.ABS_MT_TRACKING_ID, tracking_ids[i])])
+
+        o.extend([libevdev.InputEvent(libevdev.BTN_TOUCH, 1),
+                  libevdev.InputEvent(self.tool[tracked_fingers], 1),
+                  libevdev.InputEvent(libevdev.SYN_REPORT, 0)])
+
+        self.dev.send_events(o)
+
+    def end_gesture(self, tracking_ids, tracked_fingers):
+        'End the gesture'
+        o = []
+
+        for i in range(self.num_slots):
+            if tracking_ids[i] != -1:
+                o.extend([libevdev.InputEvent(libevdev.ABS_MT_SLOT, i),
+                          libevdev.InputEvent(libevdev.ABS_MT_TRACKING_ID, -1)])
+
+        o.extend([libevdev.InputEvent(libevdev.BTN_TOUCH, 0),
+                  libevdev.InputEvent(self.tool[tracked_fingers], 0),
+                  libevdev.InputEvent(libevdev.SYN_REPORT, 0)])
+
+        self.dev.send_events(o)
+
+    def gesture(self):
+        'Grab the touch device and reroute events to a gesture capable virtual device'
+
+        # Flush the event queue and get the fingers tracking ids
+        tracking_ids = self.flush()
+
+        tracked_fingers = self.num_slots - tracking_ids.count(-1)
+
+        # If #fingers has changed while starting the translation, cancel
+        if tracked_fingers != self.parent_handler.fingers:
+            return verbose("Cancelled translation")
+
+        self.translate_events(tracking_ids, tracked_fingers)
+
+        # We still need to reconcile the number of fingers for the touch listener
+        # External applications get out of sync also ? -> don't care?
 
 class VIRTUAL_PAD:
     'Virtual device to send simulated gesture events'
