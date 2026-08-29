@@ -844,11 +844,13 @@ class HANDLER:
 
         if monotonic() - self.finger_time > options.touch_finger_tolerance:
             if self.fingers != self.fingers_:
+                # If #finger change, cancel
                 if self.fingers != 0:
                     self.end(True)
-
-                if Xlib.display:
+                # If start of touch gesture, get the screen rotation
+                elif Xlib.display:
                     self.rotation = Xlib.display.Display().screen().root.xrandr_get_screen_info().rotation
+
                 self.begin('touch', time, self.fingers_)
 
                 self.fingers = self.fingers_
