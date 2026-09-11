@@ -526,9 +526,9 @@ class HANDLER:
                     case 'keys':
                         vkey.send_keys(keys)
                     case 'begin_gesture':
-                        vpad.begin_gesture(self.evdevice)
+                        vpad.begin_gesture()
                     case 'end_gesture':
-                        vpad.end_gesture(self.evdevice)
+                        vpad.end_gesture()
                     case 'scroll':
                         vpad.scroll(self.data['dx'], self.data['dy'])
                     case 'translate':
