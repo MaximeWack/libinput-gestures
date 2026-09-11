@@ -909,6 +909,17 @@ class VIRTUAL_TRANSLATE:
 
         self.dev = dev.create_uinput_device()
 
+        dev = libevdev.Device()
+        dev.name = DEVICEPREFIX + " motion"
+
+        for a in [libevdev.INPUT_PROP_POINTER,
+                  libevdev.BTN_LEFT,
+                  libevdev.REL_X,
+                  libevdev.REL_Y]:
+            dev.enable(a)
+
+        self.dev2 = dev.create_uinput_device()
+
     def flush(self):
         'Flush the evdev queue and get the fingers tracking ids at the same time'
         tracking_ids = [-1] * self.num_slots
@@ -919,12 +930,16 @@ class VIRTUAL_TRANSLATE:
         try:
             for e in self.copy_device.events():
                 if e.type != libevdev.SYN_DROPPED:
+                    self.prevX = self.copy_device.slots[0][libevdev.ABS_MT_POSITION_X]
+                    self.prevY = self.copy_device.slots[0][libevdev.ABS_MT_POSITION_Y]
                     for i in range(self.num_slots):
                         tracking_ids[i] = self.copy_device.slots[i][libevdev.ABS_MT_TRACKING_ID]
 
         # If dropped event, sync the device (and discard the queued synced events)
         except libevdev.device.EventsDroppedException:
             for e in self.copy_device.sync():
+                self.prevX = self.copy_device.slots[0][libevdev.ABS_MT_POSITION_X]
+                self.prevY = self.copy_device.slots[0][libevdev.ABS_MT_POSITION_Y]
                 for i in range(self.num_slots):
                     tracking_ids[i] = self.copy_device.slots[i][libevdev.ABS_MT_TRACKING_ID]
 
@@ -935,8 +950,6 @@ class VIRTUAL_TRANSLATE:
     def translate_events(self, tracking_ids, tracked_fingers):
         'Just translate the position events and discard the rest. Break out if finger change'
 
-        self.copy_device.grab()
-
         self.start_gesture(tracking_ids, tracked_fingers)
 
         for e in self.copy_device.events():
@@ -944,10 +957,13 @@ class VIRTUAL_TRANSLATE:
                 break
             else:
                 self.dev.send_events([e])
+                x = self.copy_device.slots[0][libevdev.ABS_MT_POSITION_X]
+                y = self.copy_device.slots[0][libevdev.ABS_MT_POSITION_Y]
+                self.dev2.send_events([libevdev.InputEvent(libevdev.REL_X, int(self.prevX / 100) - int(x / 100)),
+                                       libevdev.InputEvent(libevdev.REL_Y, int(self.prevY / 100) - int(y / 100)),
+                                       libevdev.InputEvent(libevdev.SYN_REPORT, 0)])
 
         self.end_gesture(tracking_ids, tracked_fingers)
-
-        self.copy_device.ungrab()
 
     def start_gesture(self, tracking_ids, tracked_fingers):
         'Initiate the gesture with the specified number of fingers'
@@ -980,11 +996,10 @@ class VIRTUAL_TRANSLATE:
         self.dev.send_events(o)
 
     def gesture(self):
-        'Grab the touch device and reroute events to a gesture capable virtual device'
+        'Reroute events to a gesture capable virtual device and cancel motions'
 
         # Flush the event queue and get the fingers tracking ids
         tracking_ids = self.flush()
-
         tracked_fingers = self.num_slots - tracking_ids.count(-1)
 
         # If #fingers has changed while starting the translation, cancel
@@ -992,9 +1007,6 @@ class VIRTUAL_TRANSLATE:
             return verbose("Cancelled translation")
 
         self.translate_events(tracking_ids, tracked_fingers)
-
-        # We still need to reconcile the number of fingers for the touch listener
-        # External applications get out of sync also ? -> don't care?
 
 class VIRTUAL_PAD:
     'Virtual device to send simulated gesture events'
