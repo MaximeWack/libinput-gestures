@@ -446,6 +446,7 @@ class HANDLER:
             self.lastPos = [(0,0)] * self.num_slots
             self.rotation = 1
 
+        # Get resolution for absolute position devices (touch and gesture)
         if self.evdevice.has(libevdev.ABS_X):
             self.resolution = self.evdevice.absinfo[libevdev.ABS_X].resolution
         else:
@@ -739,7 +740,7 @@ class HANDLER:
         # BUTTON : button pressed/released
 
         # MOTION -> swipe handler 1 / rotate handler 1
-        # MOTION : x/y, can't know if begin/update/end
+        # MOTION : x/y : begin if not state, can't know when end
         # x = x and float(x)
         # y = y and float(y)
 
